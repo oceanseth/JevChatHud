@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'" />
+  <title>JevChatHud</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <select id="profile-select" title="Active profile">
+      <option value="">no profile</option>
+    </select>
+    <div class="spacer"></div>
+    <button id="pin-btn" title="Always on top">&#9650;</button>
+    <button id="settings-btn" title="Settings &amp; profiles">&#9881;</button>
+  </header>
+
+  <div id="controls">
+    <label id="relevancy-label">
+      relevancy <span id="relevancy-value">55</span>
+      <input type="range" id="relevancy" min="0" max="100" value="55" />
+    </label>
+    <label id="see-all-label">
+      <input type="checkbox" id="see-all" /> see all
+    </label>
+  </div>
+
+  <div id="status-row"></div>
+
+  <main id="feed"></main>
+
+  <footer id="statusbar">
+    <span id="stats">no messages yet</span>
+    <span id="judge-error" class="error"></span>
+  </footer>
+
+  <!-- Settings / profile editor overlay -->
+  <div id="overlay" class="hidden">
+    <div id="panel">
+      <h2>Settings</h2>
+      <label class="field">TypeSafe API key
+        <input type="password" id="api-key" placeholder="ts-..." />
+      </label>
+      <label class="field">Model
+        <input type="text" id="model" placeholder="jev-latest" />
+      </label>
+
+      <h2>Profiles</h2>
+      <div class="row">
+        <select id="edit-profile-select"></select>
+        <button id="new-profile-btn">new</button>
+        <button id="delete-profile-btn" class="danger">delete</button>
+      </div>
+
+      <div id="profile-editor">
+        <label class="field">Profile name
+          <input type="text" id="profile-name" placeholder="Friday variety stream" />
+        </label>
+        <label class="field">Stream context (Jev judges chat against this)
+          <textarea id="profile-context" rows="3"
+            placeholder="I'm speedrunning Elden Ring. Questions about the run and route matter; backseat gaming does not."></textarea>
+        </label>
+
+        <h3>Sources</h3>
+        <div id="sources-list"></div>
+        <div class="row">
+          <select id="new-source-type">
+            <option value="twitch">Twitch channel</option>
+            <option value="youtube">YouTube live video</option>
+            <option value="discord">Discord channel</option>
+            <option value="facebook">Facebook live video (experimental)</option>
+          </select>
+          <button id="add-source-btn">add source</button>
+        </div>
+      </div>
+
+      <div class="row end">
+        <button id="close-panel-btn">close</button>
+        <button id="save-panel-btn" class="primary">save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

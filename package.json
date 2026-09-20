@@ -1,0 +1,18 @@
+{
+  "name": "jevchathud",
+  "version": "0.1.0",
+  "description": "Realtime chat HUD for livestreamers: TypeSafe (Jev) judges incoming chat from Twitch, Discord, YouTube, and Facebook so only messages worth the streamer's attention surface.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0",
+    "ws": "^8.18.0"
+  }
+}
