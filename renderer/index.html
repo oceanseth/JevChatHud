@@ -26,6 +26,14 @@
     </label>
   </div>
 
+  <div id="tagbar" title="Show only Jev-tagged kinds (>50% confidence). No tags selected = relevancy view.">
+    <div id="tag-chips"></div>
+    <span class="tag-bulk-group">
+      <button id="tags-all" class="tag-bulk">all</button>
+      <button id="tags-none" class="tag-bulk">none</button>
+    </span>
+  </div>
+
   <div id="status-row"></div>
 
   <main id="feed"></main>
@@ -82,6 +90,7 @@
     </div>
   </div>
 
+  <script src="filter.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

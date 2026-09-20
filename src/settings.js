@@ -8,6 +8,7 @@ const DEFAULTS = {
   typesafeApiKey: "",
   model: "jev-latest",
   relevancyThreshold: 55, // 0-100; messages scoring below are hidden in curated view
+  kindFilter: [], // selected message kinds; non-empty replaces the relevancy filter
   seeAll: false,
   alwaysOnTop: false,
   activeProfileId: null,

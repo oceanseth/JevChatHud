@@ -1,4 +1,4 @@
-/* global hud */
+/* global hud, messageVisible, KINDS, KIND_CONFIDENCE_MIN */
 const MAX_ROWS = 600;
 
 const feed = document.getElementById("feed");
@@ -10,11 +10,15 @@ const statusRow = document.getElementById("status-row");
 const statsEl = document.getElementById("stats");
 const judgeErrorEl = document.getElementById("judge-error");
 const pinBtn = document.getElementById("pin-btn");
+const tagbar = document.getElementById("tagbar");
+const tagChipsEl = document.getElementById("tag-chips");
 
 let settings = null;
 let editingProfile = null; // working copy inside the settings panel
 const rows = new Map(); // message id -> row element
 const sourceStates = new Map(); // sourceId -> {state, label}
+const selectedKinds = new Set(); // active tag filters; empty = relevancy mode
+const tagChips = new Map(); // kind -> {chip, count}
 
 // ---------- feed ----------
 
@@ -29,11 +33,11 @@ function relClass(rel) {
 }
 
 function applyFilter(row) {
-  const rel = row.dataset.relevancy;
-  const judged = rel !== "";
-  const visible =
-    seeAllCheck.checked ||
-    (judged && Number(rel) >= Number(relevancySlider.value));
+  const visible = messageVisible(row._judgment, {
+    seeAll: seeAllCheck.checked,
+    kinds: [...selectedKinds],
+    threshold: Number(relevancySlider.value),
+  });
   row.classList.toggle("hidden-by-filter", !visible);
 }
 
@@ -45,7 +49,7 @@ function addMessage(msg) {
   const stick = nearBottom();
   const row = document.createElement("div");
   row.className = "msg dim"; // dim until judged
-  row.dataset.relevancy = "";
+  row._judgment = null;
 
   const srcChip = document.createElement("span");
   srcChip.className = `chip src-${msg.source.type}`;
@@ -78,11 +82,14 @@ function addMessage(msg) {
   feed.append(row);
   applyFilter(row);
 
+  let evicted = false;
   while (feed.children.length > MAX_ROWS) {
     const victim = feed.firstElementChild;
     for (const [id, el] of rows) if (el === victim) rows.delete(id);
     victim.remove();
+    evicted = true;
   }
+  if (evicted) renderTagCounts();
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
@@ -97,7 +104,7 @@ function markJudged({ id, judgment }) {
     row._relChip.title = "not judged (see status bar)";
   } else {
     row.classList.remove("dim");
-    row.dataset.relevancy = String(judgment.relevancy);
+    row._judgment = judgment;
     row._relChip.textContent = judgment.relevancy;
     row._relChip.className = `chip rel ${relClass(judgment.relevancy)}`;
     row._relChip.title = `relevancy ${judgment.relevancy}/100 (confidence ${judgment.relevanceConfidence.toFixed(2)})`;
@@ -107,10 +114,80 @@ function markJudged({ id, judgment }) {
     kindChip.textContent = judgment.kind.replace("_", " ");
     kindChip.title = `confidence ${judgment.kindConfidence.toFixed(2)}`;
     row._badges.append(kindChip);
+    renderTagCounts();
   }
   applyFilter(row);
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
+
+// ---------- tag filter bar ----------
+
+function buildTagBar() {
+  tagChipsEl.replaceChildren();
+  tagChips.clear();
+  for (const kind of KINDS) {
+    const chip = document.createElement("button");
+    chip.className = `tag-chip kind-${kind}`;
+    chip.title = `only ${kind.replace("_", " ")} messages (Jev confidence >50%)`;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const label = document.createElement("span");
+    label.textContent = kind.replace("_", " ");
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = "";
+    chip.append(dot, label, count);
+    chip.addEventListener("click", () => toggleKind(kind));
+    tagChipsEl.append(chip);
+    tagChips.set(kind, { chip, count });
+  }
+}
+
+function renderTagCounts() {
+  const counts = Object.fromEntries(KINDS.map((k) => [k, 0]));
+  for (const row of rows.values()) {
+    const j = row._judgment;
+    if (j && j.kindConfidence > KIND_CONFIDENCE_MIN && j.kind in counts) counts[j.kind]++;
+  }
+  for (const [kind, { count }] of tagChips) {
+    count.textContent = counts[kind] ? String(counts[kind]) : "";
+  }
+}
+
+function syncFilterControls() {
+  const tagsActive = selectedKinds.size > 0;
+  for (const [kind, { chip }] of tagChips) {
+    chip.classList.toggle("active", selectedKinds.has(kind));
+  }
+  // Communicate precedence: tags replace the slider; "see all" bypasses both.
+  document.getElementById("relevancy-label").classList.toggle("inactive", tagsActive || seeAllCheck.checked);
+  relevancySlider.disabled = tagsActive;
+  relevancySlider.title = tagsActive ? "tag filter active — clear tags to use the relevancy slider" : "";
+  tagbar.classList.toggle("inactive", seeAllCheck.checked);
+}
+
+function setKinds(kinds) {
+  selectedKinds.clear();
+  for (const k of kinds) selectedKinds.add(k);
+  // Picking a tag means "curate for me" — drop out of the raw firehose view.
+  if (selectedKinds.size && seeAllCheck.checked) {
+    seeAllCheck.checked = false;
+    hud.updateSettings({ seeAll: false });
+  }
+  hud.updateSettings({ kindFilter: [...selectedKinds] });
+  syncFilterControls();
+  refilterAll();
+}
+
+function toggleKind(kind) {
+  const next = new Set(selectedKinds);
+  if (next.has(kind)) next.delete(kind);
+  else next.add(kind);
+  setKinds(next);
+}
+
+document.getElementById("tags-all").addEventListener("click", () => setKinds(KINDS));
+document.getElementById("tags-none").addEventListener("click", () => setKinds([]));
 
 // ---------- status / stats ----------
 
@@ -157,6 +234,7 @@ function clearFeed() {
   feed.replaceChildren();
   sourceStates.clear();
   renderStatuses();
+  renderTagCounts();
 }
 
 profileSelect.addEventListener("change", async () => {
@@ -175,6 +253,7 @@ relevancySlider.addEventListener("change", () => {
 
 seeAllCheck.addEventListener("change", () => {
   hud.updateSettings({ seeAll: seeAllCheck.checked });
+  syncFilterControls();
   refilterAll();
 });
 
@@ -360,5 +439,8 @@ hud.onProfileActivated((id) => {
   relevancyValue.textContent = settings.relevancyThreshold;
   seeAllCheck.checked = settings.seeAll;
   pinBtn.classList.toggle("active", settings.alwaysOnTop);
+  buildTagBar();
+  for (const k of settings.kindFilter || []) if (KINDS.includes(k)) selectedKinds.add(k);
+  syncFilterControls();
   renderProfileSelect();
 })();

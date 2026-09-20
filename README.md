@@ -23,6 +23,13 @@ The HUD shows you only what's worth your attention while you perform.
 - The **relevancy slider** (0–100) filters the feed against Jev's scores in
   realtime — thresholds live in code/UI, not the model, so sliding it never
   re-runs inference. **See all** bypasses curation entirely.
+- The **tag bar** filters by message kind instead: click any combination of
+  kind chips (each shows a live count) to see only messages Jev tagged with
+  one of those kinds at >50% confidence — `all` / `none` bulk-toggle. While
+  tags are selected the relevancy slider is ignored, deliberately: kinds like
+  *toxic* or *chatter* score near-zero relevancy by design and would otherwise
+  never surface for a moderator reviewing them. Clearing all tags returns to
+  the relevancy view; clicking a tag while in "see all" drops back to curation.
 
 ## Running
 
