@@ -232,7 +232,19 @@ body.compact .msg { padding: 2px 12px; gap: 6px; }
 body.show-timestamps .msg .time { display: inline; }
 .msg:hover { background: var(--bg-hover); }
 .msg.hidden-by-filter { display: none; }
-.msg .body { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.msg .body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.msg.expanded .body { -webkit-line-clamp: unset; overflow: visible; }
+.msg .chip.expand { display: none; cursor: pointer; }
+.msg.clampable .chip.expand { display: inline-block; }
+.msg.clampable .text { cursor: pointer; }
 .msg .user { font-weight: 600; margin-right: 6px; cursor: pointer; }
 .msg .user:hover { text-decoration: underline; text-underline-offset: 2px; }
 .msg .text { color: var(--text); }

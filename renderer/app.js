@@ -43,6 +43,21 @@ function applyFilter(row) {
     threshold: Number(relevancySlider.value),
   });
   row.classList.toggle("hidden-by-filter", !visible);
+  if (visible) checkClamp(row);
+}
+
+// Long messages (spam walls) clamp to 3 lines; click the text or the chip to
+// expand. Measured once per row, deferred until the row is actually visible.
+function checkClamp(row) {
+  if (row._clampChecked || !row._body || !row._body.clientHeight) return;
+  row._clampChecked = true;
+  if (row._body.scrollHeight > row._body.clientHeight + 2) row.classList.add("clampable");
+}
+
+function toggleExpanded(row) {
+  if (!row.classList.contains("clampable")) return;
+  const on = row.classList.toggle("expanded");
+  row._expandChip.textContent = on ? "⌃ less" : "⌄ more";
 }
 
 function refilterAll() {
@@ -76,6 +91,7 @@ function addMessage(msg) {
   const text = document.createElement("span");
   text.className = "text";
   text.textContent = msg.text;
+  text.addEventListener("click", () => toggleExpanded(row));
   body.append(user, text);
 
   const badges = document.createElement("span");
@@ -83,11 +99,18 @@ function addMessage(msg) {
   const relChip = document.createElement("span");
   relChip.className = "chip rel pending";
   relChip.textContent = "…";
-  badges.append(relChip);
+  const expandChip = document.createElement("span");
+  expandChip.className = "chip expand";
+  expandChip.textContent = "⌄ more";
+  expandChip.title = "message truncated — click to expand";
+  expandChip.addEventListener("click", () => toggleExpanded(row));
+  badges.append(relChip, expandChip);
 
   row.append(time, srcChip, body, badges);
   row._relChip = relChip;
   row._badges = badges;
+  row._body = body;
+  row._expandChip = expandChip;
 
   rows.set(msg.id, row);
   feed.append(row);
