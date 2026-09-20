@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld("hud", {
   onSourceStatus: on("source:status"),
   onJudgeStats: on("judge:stats"),
   onProfileActivated: on("profile:activated"),
+  onOpenSettings: on("ui:open-settings"),
 });

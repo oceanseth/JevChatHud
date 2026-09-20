@@ -2,7 +2,10 @@ const { test } = require("node:test");
 const assert = require("node:assert");
 const { messageVisible, KINDS, KIND_CONFIDENCE_MIN } = require("../renderer/filter");
 const { KIND_CRITERIA } = require("../src/judge");
-const { DEFAULTS } = require("../src/settings");
+const { Settings, DEFAULTS } = require("../src/settings");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
 const j = (kind, kindConfidence, relevancy) => ({ kind, kindConfidence, relevancy });
 
@@ -12,6 +15,15 @@ test("KINDS mirrors the judge's KIND_CRITERIA", () => {
 
 test("kindFilter persists through Settings.update", () => {
   assert.deepEqual(DEFAULTS.kindFilter, []);
+});
+
+test("appearance defaults merge over a partial saved config", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jevhud-"));
+  fs.writeFileSync(path.join(dir, "config.json"), JSON.stringify({ appearance: { fontSize: 16 } }));
+  const s = new Settings(dir);
+  assert.equal(s.get().appearance.fontSize, 16);
+  assert.equal(s.get().appearance.fontFamily, DEFAULTS.appearance.fontFamily);
+  assert.equal(s.get().appearance.density, DEFAULTS.appearance.density);
 });
 
 test("see all shows everything, judged or not", () => {

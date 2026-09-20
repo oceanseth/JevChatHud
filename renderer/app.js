@@ -12,6 +12,10 @@ const judgeErrorEl = document.getElementById("judge-error");
 const pinBtn = document.getElementById("pin-btn");
 const tagbar = document.getElementById("tagbar");
 const tagChipsEl = document.getElementById("tag-chips");
+const emptyState = document.getElementById("empty-state");
+const emptyTitle = document.getElementById("empty-title");
+const emptyHint = document.getElementById("empty-hint");
+const emptyAction = document.getElementById("empty-action");
 
 let settings = null;
 let editingProfile = null; // working copy inside the settings panel
@@ -56,6 +60,10 @@ function addMessage(msg) {
   srcChip.textContent = msg.source.type;
   srcChip.title = msg.source.label;
 
+  const time = document.createElement("span");
+  time.className = "time";
+  time.textContent = new Date(msg.ts || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   const body = document.createElement("span");
   body.className = "body";
   const user = document.createElement("span");
@@ -74,13 +82,14 @@ function addMessage(msg) {
   relChip.textContent = "…";
   badges.append(relChip);
 
-  row.append(srcChip, body, badges);
+  row.append(time, srcChip, body, badges);
   row._relChip = relChip;
   row._badges = badges;
 
   rows.set(msg.id, row);
   feed.append(row);
   applyFilter(row);
+  updateEmptyState();
 
   let evicted = false;
   while (feed.children.length > MAX_ROWS) {
@@ -235,7 +244,86 @@ function clearFeed() {
   sourceStates.clear();
   renderStatuses();
   renderTagCounts();
+  updateEmptyState();
 }
+
+// ---------- appearance ----------
+
+const FONT_STACKS = {
+  system: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  rounded: 'ui-rounded, "SF Pro Rounded", -apple-system, sans-serif',
+  helvetica: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  avenir: '"Avenir Next", Avenir, "Segoe UI", sans-serif',
+  georgia: 'Georgia, "Times New Roman", serif',
+  menlo: 'Menlo, Consolas, ui-monospace, monospace',
+};
+
+const fontSelect = document.getElementById("appearance-font");
+const densitySelect = document.getElementById("appearance-density");
+const sizeSlider = document.getElementById("appearance-size");
+const sizeValue = document.getElementById("appearance-size-value");
+const timestampsCheck = document.getElementById("appearance-timestamps");
+
+function applyAppearance(a) {
+  document.documentElement.style.setProperty("--chat-font", FONT_STACKS[a.fontFamily] || FONT_STACKS.system);
+  document.documentElement.style.setProperty("--chat-size", `${a.fontSize}px`);
+  document.body.classList.toggle("compact", a.density === "compact");
+  document.body.classList.toggle("show-timestamps", !!a.timestamps);
+}
+
+function readAppearanceControls() {
+  return {
+    fontFamily: fontSelect.value,
+    fontSize: Number(sizeSlider.value),
+    density: densitySelect.value,
+    timestamps: timestampsCheck.checked,
+  };
+}
+
+// Appearance applies live and persists immediately — no save button round-trip.
+async function onAppearanceChange() {
+  const appearance = readAppearanceControls();
+  sizeValue.textContent = appearance.fontSize;
+  applyAppearance(appearance);
+  settings = await hud.updateSettings({ appearance });
+}
+
+for (const el of [fontSelect, densitySelect, timestampsCheck]) {
+  el.addEventListener("change", onAppearanceChange);
+}
+sizeSlider.addEventListener("input", () => {
+  sizeValue.textContent = sizeSlider.value;
+  applyAppearance(readAppearanceControls());
+});
+sizeSlider.addEventListener("change", onAppearanceChange);
+
+// ---------- empty state ----------
+
+function updateEmptyState() {
+  if (rows.size > 0) {
+    emptyState.classList.add("hidden");
+    return;
+  }
+  emptyState.classList.remove("hidden");
+  const profile = settings?.profiles.find((p) => p.id === settings.activeProfileId);
+  if (!profile) {
+    emptyTitle.textContent = "No profile selected";
+    emptyHint.textContent = "A profile bundles your chat sources and the stream context Jev judges against.";
+    emptyAction.textContent = "Create a profile";
+    emptyAction.classList.remove("hidden");
+  } else if (!(profile.sources || []).length) {
+    emptyTitle.textContent = "No chat sources yet";
+    emptyHint.textContent = "Attach your Twitch, YouTube, Discord, or Facebook chat to this profile.";
+    emptyAction.textContent = "Add a source";
+    emptyAction.classList.remove("hidden");
+  } else {
+    emptyTitle.textContent = "Waiting for chat…";
+    emptyHint.textContent = "Messages from your connected sources will stream in here.";
+    emptyAction.classList.add("hidden");
+  }
+}
+
+emptyAction.addEventListener("click", () => openSettingsPanel({ focusSources: true }));
 
 profileSelect.addEventListener("change", async () => {
   clearFeed();
@@ -374,20 +462,36 @@ document.getElementById("delete-profile-btn").addEventListener("click", async ()
   renderProfileSelect();
 });
 
-document.getElementById("add-source-btn").addEventListener("click", () => {
-  const type = document.getElementById("new-source-type").value;
-  editingProfile.sources.push({ type });
-  renderSources();
-});
+for (const btn of document.querySelectorAll("#add-source-row .add-source")) {
+  btn.addEventListener("click", () => {
+    editingProfile.sources.push({ type: btn.dataset.type });
+    renderSources();
+    // Put the new source's first field in front of the user immediately.
+    const items = sourcesList.querySelectorAll(".source-item");
+    items[items.length - 1]?.querySelector("input")?.focus();
+  });
+}
 
-document.getElementById("settings-btn").addEventListener("click", () => {
+function openSettingsPanel({ focusSources = false } = {}) {
   apiKeyInput.value = settings.typesafeApiKey || "";
   modelInput.value = settings.model || "jev-latest";
+  const a = settings.appearance || {};
+  fontSelect.value = a.fontFamily || "system";
+  densitySelect.value = a.density || "cozy";
+  sizeSlider.value = a.fontSize || 13;
+  sizeValue.textContent = sizeSlider.value;
+  timestampsCheck.checked = !!a.timestamps;
   const active = settings.profiles.find((p) => p.id === settings.activeProfileId);
   renderEditProfileSelect(active?.id || "");
   loadProfileIntoEditor(active || null);
   overlay.classList.remove("hidden");
-});
+  if (focusSources) {
+    document.getElementById("sources-heading").scrollIntoView({ block: "start" });
+  }
+}
+
+document.getElementById("settings-btn").addEventListener("click", () => openSettingsPanel());
+document.getElementById("add-source-shortcut").addEventListener("click", () => openSettingsPanel({ focusSources: true }));
 
 document.getElementById("close-panel-btn").addEventListener("click", () => {
   overlay.classList.add("hidden");
@@ -412,6 +516,7 @@ document.getElementById("save-panel-btn").addEventListener("click", async () => 
     }
   }
   renderProfileSelect();
+  updateEmptyState();
   overlay.classList.add("hidden");
 });
 
@@ -420,7 +525,9 @@ document.getElementById("save-panel-btn").addEventListener("click", async () => 
 hud.onMessage(addMessage);
 hud.onJudged(markJudged);
 hud.onSourceStatus((status) => {
-  sourceStates.set(status.sourceId || status.label, status);
+  // Stopped sources drop off the status row rather than lingering as stale chips.
+  if (status.state === "stopped") sourceStates.delete(status.sourceId || status.label);
+  else sourceStates.set(status.sourceId || status.label, status);
   renderStatuses();
 });
 hud.onJudgeStats(renderStats);
@@ -428,8 +535,10 @@ hud.onProfileActivated((id) => {
   if (settings) {
     settings.activeProfileId = id;
     profileSelect.value = id || "";
+    updateEmptyState();
   }
 });
+hud.onOpenSettings(() => openSettingsPanel());
 
 // ---------- init ----------
 
@@ -442,5 +551,7 @@ hud.onProfileActivated((id) => {
   buildTagBar();
   for (const k of settings.kindFilter || []) if (KINDS.includes(k)) selectedKinds.add(k);
   syncFilterControls();
+  applyAppearance(settings.appearance || {});
   renderProfileSelect();
+  updateEmptyState();
 })();

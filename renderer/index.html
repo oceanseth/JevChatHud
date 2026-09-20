@@ -12,8 +12,9 @@
       <option value="">no profile</option>
     </select>
     <div class="spacer"></div>
+    <button id="add-source-shortcut" title="Add a chat source">＋ source</button>
     <button id="pin-btn" title="Always on top">&#9650;</button>
-    <button id="settings-btn" title="Settings &amp; profiles">&#9881;</button>
+    <button id="settings-btn" title="Settings (⌘,)">&#9881;</button>
   </header>
 
   <div id="controls">
@@ -36,7 +37,15 @@
 
   <div id="status-row"></div>
 
-  <main id="feed"></main>
+  <main id="feed-wrap">
+    <div id="feed"></div>
+    <div id="empty-state" class="hidden">
+      <div id="empty-icon">&#128172;</div>
+      <div id="empty-title"></div>
+      <div id="empty-hint"></div>
+      <button id="empty-action" class="primary"></button>
+    </div>
+  </main>
 
   <footer id="statusbar">
     <span id="stats">no messages yet</span>
@@ -52,6 +61,32 @@
       </label>
       <label class="field">Model
         <input type="text" id="model" placeholder="jev-latest" />
+      </label>
+
+      <h2>Appearance</h2>
+      <div class="row">
+        <label class="field grow">Chat font
+          <select id="appearance-font">
+            <option value="system">System</option>
+            <option value="rounded">System Rounded</option>
+            <option value="helvetica">Helvetica Neue</option>
+            <option value="avenir">Avenir Next</option>
+            <option value="georgia">Georgia</option>
+            <option value="menlo">Menlo (mono)</option>
+          </select>
+        </label>
+        <label class="field grow">Density
+          <select id="appearance-density">
+            <option value="cozy">Cozy</option>
+            <option value="compact">Compact</option>
+          </select>
+        </label>
+      </div>
+      <label class="field">Font size <span id="appearance-size-value">13</span>px
+        <input type="range" id="appearance-size" min="11" max="20" value="13" />
+      </label>
+      <label id="appearance-timestamps-label">
+        <input type="checkbox" id="appearance-timestamps" /> show message timestamps
       </label>
 
       <h2>Profiles</h2>
@@ -70,16 +105,13 @@
             placeholder="I'm speedrunning Elden Ring. Questions about the run and route matter; backseat gaming does not."></textarea>
         </label>
 
-        <h3>Sources</h3>
+        <h3 id="sources-heading">Sources</h3>
         <div id="sources-list"></div>
-        <div class="row">
-          <select id="new-source-type">
-            <option value="twitch">Twitch channel</option>
-            <option value="youtube">YouTube live video</option>
-            <option value="discord">Discord channel</option>
-            <option value="facebook">Facebook live video (experimental)</option>
-          </select>
-          <button id="add-source-btn">add source</button>
+        <div id="add-source-row">
+          <button class="add-source src-twitch" data-type="twitch">＋ Twitch</button>
+          <button class="add-source src-youtube" data-type="youtube">＋ YouTube</button>
+          <button class="add-source src-discord" data-type="discord">＋ Discord</button>
+          <button class="add-source src-facebook" data-type="facebook">＋ Facebook</button>
         </div>
       </div>
 

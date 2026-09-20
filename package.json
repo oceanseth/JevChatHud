@@ -1,18 +1,43 @@
 {
   "name": "jevchathud",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Realtime chat HUD for livestreamers: TypeSafe (Jev) judges incoming chat from Twitch, Discord, YouTube, and Facebook so only messages worth the streamer's attention surface.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test"
+    "test": "node --test",
+    "dist": "electron-builder --mac --dir",
+    "dist:dmg": "electron-builder --mac"
   },
   "license": "MIT",
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "@typesafe-ai/sdk": "^0.6.0",
     "ws": "^8.18.0"
+  },
+  "productName": "JevChatHud",
+  "build": {
+    "appId": "com.sethcaldwell.jevchathud",
+    "productName": "JevChatHud",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "assets/icon-1024.png",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
+      "identity": null
+    }
   }
 }

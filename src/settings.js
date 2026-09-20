@@ -10,6 +10,12 @@ const DEFAULTS = {
   relevancyThreshold: 55, // 0-100; messages scoring below are hidden in curated view
   kindFilter: [], // selected message kinds; non-empty replaces the relevancy filter
   seeAll: false,
+  appearance: {
+    fontFamily: "system", // key into the renderer's font map
+    fontSize: 13, // px, chat feed only
+    density: "cozy", // cozy | compact row spacing
+    timestamps: false, // show HH:MM per message
+  },
   alwaysOnTop: false,
   activeProfileId: null,
   profiles: [],
@@ -22,6 +28,7 @@ class Settings {
     try {
       const raw = JSON.parse(fs.readFileSync(this.file, "utf8"));
       this.data = { ...DEFAULTS, ...raw };
+      this.data.appearance = { ...DEFAULTS.appearance, ...(raw.appearance || {}) };
     } catch {
       // first run or unreadable file: start from defaults
     }
