@@ -69,7 +69,10 @@ function addMessage(msg) {
   const user = document.createElement("span");
   user.className = "user";
   user.textContent = msg.user.name;
+  user.title = `profile ${msg.user.name}`;
   if (msg.user.color) user.style.color = msg.user.color;
+  user.addEventListener("click", () => openUserProfile(msg.source.type, msg.user));
+  row._userRef = { platform: msg.source.type, name: msg.user.name };
   const text = document.createElement("span");
   text.className = "text";
   text.textContent = msg.text;
@@ -89,6 +92,7 @@ function addMessage(msg) {
   rows.set(msg.id, row);
   feed.append(row);
   applyFilter(row);
+  refreshUserProfileIf(row._userRef);
   updateEmptyState();
 
   let evicted = false;
@@ -126,8 +130,134 @@ function markJudged({ id, judgment }) {
     renderTagCounts();
   }
   applyFilter(row);
+  refreshUserProfileIf(row._userRef);
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
+
+// ---------- user profile popup ----------
+
+const userOverlay = document.getElementById("user-overlay");
+const userAvatar = document.getElementById("user-avatar");
+const userCardName = document.getElementById("user-card-name");
+const userCardPlatform = document.getElementById("user-card-platform");
+const userObserved = document.getElementById("user-observed");
+const userKinds = document.getElementById("user-kinds");
+const userBig5 = document.getElementById("user-big5");
+
+const BIG5_TRAITS = ["Openness", "Conscientiousness", "Extraversion", "Agreeableness", "Neuroticism"];
+let openUser = null; // {platform, name} while the popup is showing
+
+function relTime(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function statCell(label, value, detail) {
+  const cell = document.createElement("div");
+  cell.className = "stat";
+  const v = document.createElement("div");
+  v.className = "stat-value";
+  v.textContent = value;
+  const l = document.createElement("div");
+  l.className = "stat-label";
+  l.textContent = label;
+  cell.append(v, l);
+  if (detail) v.title = detail;
+  return cell;
+}
+
+function traitRow(label, pct, { kindClass = "", count = null } = {}) {
+  const row = document.createElement("div");
+  row.className = `trait-row ${kindClass}`;
+  const name = document.createElement("span");
+  name.className = "trait-name";
+  name.textContent = label;
+  const bar = document.createElement("span");
+  bar.className = "trait-bar";
+  const fill = document.createElement("span");
+  fill.className = "trait-fill";
+  fill.style.width = pct == null ? "0" : `${pct}%`;
+  bar.append(fill);
+  const value = document.createElement("span");
+  value.className = "trait-value";
+  value.textContent = pct == null ? "—" : `${pct}%`;
+  if (count) value.title = `${count} message${count === 1 ? "" : "s"}`;
+  row.append(name, bar, value);
+  return row;
+}
+
+function renderUserProfile(profile) {
+  userCardName.textContent = profile.name;
+  if (profile.color) userCardName.style.color = profile.color;
+  else userCardName.style.removeProperty("color");
+  userCardPlatform.className = `chip src-${profile.platform}`;
+  userCardPlatform.textContent = profile.platform;
+  userAvatar.textContent = (profile.name[0] || "?").toUpperCase();
+  userAvatar.style.background = profile.color || "var(--accent)";
+
+  userObserved.replaceChildren(
+    statCell("first seen", relTime(profile.firstSeenTs), new Date(profile.firstSeenTs).toLocaleString()),
+    statCell("messages", String(profile.messages)),
+    statCell("judged", String(profile.judged)),
+    statCell("avg relevancy", profile.avgRelevancy == null ? "—" : String(profile.avgRelevancy))
+  );
+  const firstSeen = userObserved.firstElementChild.querySelector(".stat-label");
+  firstSeen.textContent = `first seen · ${new Date(profile.firstSeenTs).toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })}`;
+
+  userKinds.replaceChildren(
+    ...KINDS.map((kind) =>
+      traitRow(kind.replace("_", " "), profile.judged ? profile.kindPct[kind] || 0 : null, {
+        kindClass: `kind-${kind}`,
+        count: profile.kinds[kind] || 0,
+      })
+    )
+  );
+
+  userBig5.replaceChildren(...BIG5_TRAITS.map((t) => traitRow(t, null)));
+}
+
+async function openUserProfile(platform, user) {
+  const profile = (await hud.getUserProfile(platform, user.name)) || {
+    // The store lags the feed by nothing in practice, but never show a dead popup.
+    platform,
+    name: user.name,
+    color: user.color,
+    firstSeenTs: Date.now(),
+    messages: 1,
+    judged: 0,
+    relevancySum: 0,
+    kinds: {},
+    kindPct: {},
+    avgRelevancy: null,
+  };
+  openUser = { platform, name: user.name };
+  renderUserProfile(profile);
+  userOverlay.classList.remove("hidden");
+}
+
+function closeUserProfile() {
+  openUser = null;
+  userOverlay.classList.add("hidden");
+}
+
+// Keep an open popup live as its user keeps chatting / getting judged.
+async function refreshUserProfileIf(ref) {
+  if (!openUser || !ref) return;
+  if (ref.platform !== openUser.platform || ref.name.toLowerCase() !== openUser.name.toLowerCase()) return;
+  const profile = await hud.getUserProfile(openUser.platform, openUser.name);
+  if (profile && openUser) renderUserProfile(profile);
+}
+
+document.getElementById("user-card-close").addEventListener("click", closeUserProfile);
+userOverlay.addEventListener("click", (e) => {
+  if (e.target === userOverlay) closeUserProfile();
+});
 
 // ---------- tag filter bar ----------
 
@@ -498,9 +628,9 @@ document.getElementById("close-panel-btn").addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !overlay.classList.contains("hidden")) {
-    overlay.classList.add("hidden");
-  }
+  if (e.key !== "Escape") return;
+  if (!userOverlay.classList.contains("hidden")) closeUserProfile();
+  else if (!overlay.classList.contains("hidden")) overlay.classList.add("hidden");
 });
 
 document.getElementById("save-panel-btn").addEventListener("click", async () => {

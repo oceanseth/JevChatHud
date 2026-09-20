@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("hud", {
   saveProfile: (profile) => ipcRenderer.invoke("profiles:save", profile),
   deleteProfile: (id) => ipcRenderer.invoke("profiles:delete", id),
   activateProfile: (id) => ipcRenderer.invoke("profile:activate", id),
+  getUserProfile: (platform, name) => ipcRenderer.invoke("user:profile", { platform, name }),
   onMessage: on("chat:message"),
   onJudged: on("chat:judged"),
   onSourceStatus: on("source:status"),

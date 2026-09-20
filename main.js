@@ -3,6 +3,7 @@ const path = require("path");
 const { Settings } = require("./src/settings");
 const { SourceManager } = require("./src/sources");
 const { Judge } = require("./src/judge");
+const { UserStats } = require("./src/user_stats");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
 // (dock, notifications, userData path stays "jevchathud" via package.json name).
@@ -12,6 +13,10 @@ let win = null;
 let settings = null;
 let sources = null;
 let judge = null;
+let userStats = null;
+// Messages awaiting judgment, so a judgment can be attributed to its user.
+const awaitingJudgment = new Map();
+const AWAITING_MAX = 2000;
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -105,16 +110,31 @@ app.whenReady().then(() => {
   }
 
   settings = new Settings(app.getPath("userData"));
+  userStats = new UserStats(app.getPath("userData"));
 
   judge = new Judge({
     getConfig: () => settings.get(),
     getProfile: () => settings.profile(settings.get().activeProfileId),
-    onJudged: (id, judgment) => send("chat:judged", { id, judgment }),
+    onJudged: (id, judgment) => {
+      // Fold the judgment into the user's lifetime stats before notifying the
+      // renderer, so a profile refresh triggered by this event sees it.
+      const msg = awaitingJudgment.get(id);
+      if (msg) {
+        awaitingJudgment.delete(id);
+        userStats.recordJudgment(msg, judgment);
+      }
+      send("chat:judged", { id, judgment });
+    },
     onStats: (stats) => send("judge:stats", stats),
   });
 
   sources = new SourceManager({
     onMessage: (msg) => {
+      userStats.recordMessage(msg);
+      awaitingJudgment.set(msg.id, msg);
+      if (awaitingJudgment.size > AWAITING_MAX) {
+        awaitingJudgment.delete(awaitingJudgment.keys().next().value);
+      }
       send("chat:message", msg);
       judge.enqueue(msg);
     },
@@ -134,6 +154,7 @@ app.whenReady().then(() => {
     return settings.get();
   });
   ipcMain.handle("profile:activate", (_e, id) => activateProfile(id));
+  ipcMain.handle("user:profile", (_e, { platform, name }) => userStats.get(platform, name));
 
   createWindow();
 
@@ -148,5 +169,6 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   sources?.stopAll();
+  userStats?.save();
   app.quit();
 });

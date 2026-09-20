@@ -233,7 +233,8 @@ body.show-timestamps .msg .time { display: inline; }
 .msg:hover { background: var(--bg-hover); }
 .msg.hidden-by-filter { display: none; }
 .msg .body { flex: 1; min-width: 0; overflow-wrap: break-word; }
-.msg .user { font-weight: 600; margin-right: 6px; }
+.msg .user { font-weight: 600; margin-right: 6px; cursor: pointer; }
+.msg .user:hover { text-decoration: underline; text-underline-offset: 2px; }
 .msg .text { color: var(--text); }
 .msg.dim .text, .msg.dim .user { color: var(--text-dim); }
 
@@ -328,3 +329,110 @@ body.show-timestamps .msg .time { display: inline; }
 .source-item .row { margin: 4px 0; }
 .source-item .field { margin-bottom: 4px; }
 .source-item .type-label { font-weight: 600; color: var(--text); }
+
+/* User profile popup: lifetime stats + Jev classification profile per chatter,
+   with scaffolded Big 5 / stylometry sections for the correlation roadmap. */
+#user-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+#user-overlay.hidden { display: none; }
+#user-card {
+  background: rgba(19, 19, 30, 0.86);
+  backdrop-filter: blur(28px) saturate(1.25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  width: min(360px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+#user-card h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin: 16px 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+#user-card-head { display: flex; align-items: center; gap: 10px; }
+#user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0e0e12;
+  flex-shrink: 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+#user-card-title { flex: 1; min-width: 0; }
+#user-card-name { font-size: 15px; font-weight: 700; overflow-wrap: break-word; }
+#user-card-platform { margin-top: 2px; display: inline-block; }
+#user-card-close { padding: 2px 8px; color: var(--text-dim); border-color: transparent; }
+#user-card-close:hover { color: var(--text); border-color: var(--border); }
+
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stat {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: rgba(8, 8, 14, 0.4);
+}
+.stat:first-child { grid-column: 1 / -1; }
+.stat-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
+
+/* No --kc default here: it would beat the earlier equal-specificity .kind-*
+   color rules. Fills fall back per-property instead. */
+.trait-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.trait-name { width: 96px; flex-shrink: 0; font-size: 12px; color: var(--text); text-transform: capitalize; }
+.trait-bar {
+  flex: 1;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.trait-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--kc, var(--text-dim));
+  transition: width 0.25s;
+}
+.trait-value {
+  width: 4ch;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+#user-big5 .trait-row { opacity: 0.5; }
+#user-big5 .trait-bar { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.07) 0 4px, transparent 4px 8px); }
+.soon {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 1px 6px;
+  opacity: 0.85;
+}
+.section-note { font-size: 10px; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+.section-note.block { margin-top: 2px; line-height: 1.4; }

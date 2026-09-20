@@ -129,6 +129,33 @@
     </div>
   </div>
 
+  <!-- User profile popup: click any chatter's name -->
+  <div id="user-overlay" class="hidden">
+    <div id="user-card">
+      <div id="user-card-head">
+        <span id="user-avatar"></span>
+        <div id="user-card-title">
+          <div id="user-card-name"></div>
+          <span id="user-card-platform" class="chip"></span>
+        </div>
+        <button id="user-card-close" title="Close (Esc)">✕</button>
+      </div>
+
+      <h2>Observed</h2>
+      <div id="user-observed" class="stat-grid"></div>
+
+      <h2>Classification profile <span class="section-note">share of judged messages per Jev tag</span></h2>
+      <div id="user-kinds"></div>
+
+      <h2>Personality · Big 5 <span class="soon">coming soon</span></h2>
+      <div id="user-big5"></div>
+      <div class="section-note block">Trait estimates will accumulate from this user's message history.</div>
+
+      <h2>Stylometry <span class="soon">coming soon</span></h2>
+      <div class="section-note block">Writing-style fingerprint to correlate this user with known accounts on other platforms. Message samples are already being collected.</div>
+    </div>
+  </div>
+
   <script src="filter.js"></script>
   <script src="app.js"></script>
 </body>
