@@ -31,6 +31,16 @@ The HUD shows you only what's worth your attention while you perform.
   never surface for a moderator reviewing them. Clearing all tags returns to
   the relevancy view; clicking a tag while in "see all" drops back to curation.
 
+## Look & feel
+
+The app runs on a generated deep-space backdrop with translucent, blurred
+surfaces (glassmorphism) and image-based toolbar icons — built to look at home
+next to OBS on a professional streamer's second monitor. **Settings** opens
+from the gear, the File menu, or `Cmd+,`, and closes with `Esc`. The
+Appearance section controls the chat font, size, density, and timestamps —
+changes apply live. Packaged builds (`npm run dist`) produce a proper
+`JevChatHud.app` with its own icon.
+
 ## Running
 
 ```sh

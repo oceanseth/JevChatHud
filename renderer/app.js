@@ -497,6 +497,12 @@ document.getElementById("close-panel-btn").addEventListener("click", () => {
   overlay.classList.add("hidden");
 });
 
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !overlay.classList.contains("hidden")) {
+    overlay.classList.add("hidden");
+  }
+});
+
 document.getElementById("save-panel-btn").addEventListener("click", async () => {
   settings = await hud.updateSettings({
     typesafeApiKey: apiKeyInput.value.trim(),
