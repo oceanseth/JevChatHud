@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' https:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' https:; media-src 'self' https:" />
   <title>JevChatHud</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -222,7 +222,16 @@
         <label id="own-avatar-label" class="check-label">
           <input type="checkbox" id="speaker-own-avatar" /> use my own avatar instead of Jev Judge (advanced)
         </label>
-        <div class="row hidden" id="own-avatar-row"><select id="speaker-avatar"></select></div>
+        <div class="hidden" id="own-avatar-row">
+          <div class="row"><select id="speaker-avatar"></select></div>
+          <div class="row"><button id="create-avatar-btn" title="Open masky.ai to create a new avatar for your account">create avatar</button></div>
+        </div>
+        <label id="audio-only-label" class="check-label" title="Readings render as voice only (much cheaper than video) and play right here in the HUD — the popup window never appears.">
+          <input type="checkbox" id="speaker-audio-only" /> audio only — play the voice without the popup window (cheaper)
+        </label>
+        <label id="speak-latest-label" class="check-label" title="Instead of one reading per interval, Jev reads the newest chat message as soon as the previous reading finishes — skipping a message he already read. Spends credits continuously while chat is active.">
+          <input type="checkbox" id="speaker-speak-latest" /> always speak latest message (continuous — ignores the interval)
+        </label>
         <label id="chroma-label" class="check-label">
           <input type="checkbox" id="speaker-chroma" /> green idle background (for OBS chroma key; default is true transparency)
         </label>
@@ -291,6 +300,9 @@
       <div class="section-note block">Writing-style fingerprint to correlate this user with known accounts on other platforms. Message samples are already being collected.</div>
     </div>
   </div>
+
+  <!-- Audio-only Jev readings play here, invisibly (no popup window). -->
+  <audio id="reading-audio"></audio>
 
   <script src="filter.js"></script>
   <script src="app.js"></script>

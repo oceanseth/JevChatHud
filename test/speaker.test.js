@@ -148,3 +148,127 @@ test("successful render decrements the local balance by creditsCharged", async (
   assert.ok(Math.abs(speaker.balance - 0.9) < 1e-9);
   speaker.stop();
 });
+
+test("audio-only mode renders output:audio and flags the play payload", async () => {
+  const spoken = [];
+  const client = fakeClient({
+    speak: async ({ text, output }) => {
+      spoken.push({ text, output });
+      return { url: "https://signed/a.mp3", line: text, creditsCharged: 0.01 };
+    },
+  });
+  const { speaker, events } = makeSpeaker({ cfg: { ...baseCfg, audioOnly: true }, client });
+  speaker.start();
+  speaker.noteJudged({ user: { name: "v" }, source: { type: "twitch" }, text: "hey" }, { relevancy: 60, kind: "chatter" });
+  await speaker.tick();
+  assert.equal(spoken[0].output, "audio");
+  assert.equal(events.plays[0].audio, true);
+  assert.equal(events.plays[0].url, "https://signed/a.mp3");
+  speaker.stop();
+});
+
+test("video mode keeps output:video and audio:false", async () => {
+  const spoken = [];
+  const client = fakeClient({
+    speak: async ({ text, output }) => {
+      spoken.push({ output });
+      return { url: "https://signed/v.mp4", line: text, creditsCharged: 0.1 };
+    },
+  });
+  const { speaker, events } = makeSpeaker({ cfg: baseCfg, client });
+  speaker.start();
+  speaker.noteJudged({ user: { name: "v" }, source: { type: "twitch" }, text: "hey" }, { relevancy: 60, kind: "chatter" });
+  await speaker.tick();
+  assert.equal(spoken[0].output, "video");
+  assert.equal(events.plays[0].audio, false);
+  speaker.stop();
+});
+
+test("speak-latest reads a new message immediately while idle", async () => {
+  const spoken = [];
+  const client = fakeClient({
+    speak: async ({ text }) => {
+      spoken.push(text);
+      return { url: "https://signed/v.mp4", line: text, creditsCharged: 0.1 };
+    },
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, speakLatest: true }, client });
+  speaker.start();
+  speaker.noteJudged({ id: "m1", user: { name: "v1" }, source: { type: "twitch" }, text: "first" }, { relevancy: 10, kind: "chatter" });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(spoken, ["v1 says: first"]);
+  speaker.stop();
+});
+
+test("speak-latest waits for playback, then chains to the newest unspoken message", async () => {
+  const spoken = [];
+  const client = fakeClient({
+    speak: async ({ text }) => {
+      spoken.push(text);
+      return { url: "https://signed/v.mp4", line: text, creditsCharged: 0.1 };
+    },
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, speakLatest: true }, client });
+  speaker.start();
+  speaker.noteJudged({ id: "m1", user: { name: "v1" }, source: { type: "twitch" }, text: "first" }, { relevancy: 10, kind: "chatter" });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(speaker.playing, true);
+  // two more land while the first is still playing — only the newest survives
+  speaker.noteJudged({ id: "m2", user: { name: "v2" }, source: { type: "twitch" }, text: "second" }, { relevancy: 10, kind: "chatter" });
+  speaker.noteJudged({ id: "m3", user: { name: "v3" }, source: { type: "twitch" }, text: "third" }, { relevancy: 10, kind: "chatter" });
+  assert.deepEqual(spoken, ["v1 says: first"]);
+  speaker.notePlaybackDone();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(spoken, ["v1 says: first", "v3 says: third"]);
+  // playback of m3 ends with nothing new -> stays silent (no re-read)
+  speaker.notePlaybackDone();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(spoken, ["v1 says: first", "v3 says: third"]);
+  speaker.stop();
+});
+
+test("speak-latest never reads toxic messages and dedupes by message id", async () => {
+  const spoken = [];
+  const client = fakeClient({
+    speak: async ({ text }) => {
+      spoken.push(text);
+      return { url: "https://signed/v.mp4", line: text, creditsCharged: 0.1 };
+    },
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, speakLatest: true }, client });
+  speaker.start();
+  speaker.noteJudged({ id: "m1", user: { name: "v" }, source: { type: "twitch" }, text: "slur" }, { relevancy: 90, kind: "toxic" });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(spoken, []);
+  speaker.noteJudged({ id: "m2", user: { name: "v" }, source: { type: "twitch" }, text: "ok" }, { relevancy: 10, kind: "chatter" });
+  await new Promise((r) => setImmediate(r));
+  speaker.notePlaybackDone();
+  // the same judged message arriving again is never re-read
+  speaker.noteJudged({ id: "m2", user: { name: "v" }, source: { type: "twitch" }, text: "ok" }, { relevancy: 10, kind: "chatter" });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(spoken, ["v says: ok"]);
+  speaker.stop();
+});
+
+test("the cadence tick is inert in speak-latest mode", async () => {
+  const spoken = [];
+  const client = fakeClient({
+    speak: async ({ text }) => {
+      spoken.push(text);
+      return { url: "https://signed/v.mp4", line: text, creditsCharged: 0.1 };
+    },
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, speakLatest: true }, client });
+  speaker.start();
+  speaker.playing = true; // mid-playback: a cadence tick must not double-read
+  speaker.noteJudged({ id: "m1", user: { name: "v" }, source: { type: "twitch" }, text: "x" }, { relevancy: 99, kind: "question" });
+  assert.equal(await speaker.tick(), null);
+  assert.deepEqual(spoken, []);
+  speaker.stop();
+});
+
+test("talkingMinutes uses the cheaper audio rate for audio-only balances", () => {
+  // 1 credit: 0 whole minutes of video, but 11 minutes of audio (0.0015/s)
+  assert.equal(talkingMinutes(1), 0);
+  assert.equal(talkingMinutes(1, "audio"), 11);
+});

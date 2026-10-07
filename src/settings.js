@@ -27,6 +27,8 @@ const DEFAULTS = {
     avatarOwnerUserId: "twitch:11867613", // Jev Judge's creator (default avatar)
     avatarId: "Ev1WizD5smJnxHWJXEHZ", // the Jev Judge avatar
     useOwnAvatar: false, // advanced: render one of the user's own avatars
+    audioOnly: false, // render voice only (cheaper) and never show the share window
+    speakLatest: false, // continuous mode: read the newest message as soon as the last reading ends
     chroma: false, // solid green idle background for OBS chroma key
     clickThrough: false, // share window never grabs the mouse; clicks fall through
     shareBounds: null, // last {x,y,width,height} of the share window

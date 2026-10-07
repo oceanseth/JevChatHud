@@ -1272,6 +1272,10 @@ const speakerBalance = document.getElementById("speaker-balance");
 const speakerOwnAvatar = document.getElementById("speaker-own-avatar");
 const ownAvatarRow = document.getElementById("own-avatar-row");
 const speakerAvatarSelect = document.getElementById("speaker-avatar");
+const createAvatarBtn = document.getElementById("create-avatar-btn");
+const speakerAudioOnly = document.getElementById("speaker-audio-only");
+const speakerSpeakLatest = document.getElementById("speaker-speak-latest");
+const readingAudio = document.getElementById("reading-audio");
 const speakerChroma = document.getElementById("speaker-chroma");
 const speakerPassthrough = document.getElementById("speaker-passthrough");
 const speakerTestBtn = document.getElementById("speaker-test-btn");
@@ -1293,6 +1297,8 @@ function renderSpeakerUI() {
   speakerOwnAvatar.checked = !!cfg.useOwnAvatar;
   ownAvatarRow.classList.toggle("hidden", !cfg.useOwnAvatar);
   if (cfg.useOwnAvatar) populateOwnAvatars();
+  speakerAudioOnly.checked = !!cfg.audioOnly;
+  speakerSpeakLatest.checked = !!cfg.speakLatest;
   speakerChroma.checked = !!cfg.chroma;
   speakerPassthrough.checked = !!cfg.clickThrough;
   speakerNote.textContent = "";
@@ -1358,6 +1364,8 @@ speakerEnabledCheck.addEventListener("change", async () => {
 });
 
 speakerInterval.addEventListener("change", () => updateSpeaker({ intervalMin: Number(speakerInterval.value) }));
+speakerAudioOnly.addEventListener("change", () => updateSpeaker({ audioOnly: speakerAudioOnly.checked }));
+speakerSpeakLatest.addEventListener("change", () => updateSpeaker({ speakLatest: speakerSpeakLatest.checked }));
 speakerChroma.addEventListener("change", () => updateSpeaker({ chroma: speakerChroma.checked }));
 speakerPassthrough.addEventListener("change", () => updateSpeaker({ clickThrough: speakerPassthrough.checked }));
 
@@ -1431,13 +1439,27 @@ speakerAvatarSelect.addEventListener("change", async () => {
   }
 });
 
+// Deep-links into the connected account's masky.ai admin console; the #create
+// hash there pops the "name your new avatar" dialog straight away.
+createAvatarBtn.addEventListener("click", async () => {
+  createAvatarBtn.disabled = true;
+  speakerNote.textContent = "opening masky.ai in your browser…";
+  try {
+    await hud.speakerCreateAvatar();
+  } finally {
+    createAvatarBtn.disabled = false;
+  }
+});
+
 // Plays the bundled sample clip (no Masky render, no credits): shows exactly
 // where and how readings will appear.
 speakerTestBtn.addEventListener("click", async () => {
   speakerTestBtn.disabled = true;
   try {
     await hud.speakerTest();
-    speakerNote.textContent = "test reading is playing in the share window";
+    speakerNote.textContent = speakerCfg().audioOnly
+      ? "test reading is playing (audio only — no window)"
+      : "test reading is playing in the share window";
   } catch (err) {
     speakerNote.textContent = `test failed: ${err.message || err}`;
   } finally {
@@ -1500,8 +1522,27 @@ hud.onSpeakerError((err) => {
   }
 });
 
-hud.onSpeakerPlayed(({ username, relevancy }) => {
-  speakerNote.textContent = `now reading ${username} (relevancy ${relevancy})`;
+hud.onSpeakerPlayed(({ username, relevancy, audio }) => {
+  speakerNote.textContent = `now reading ${username}${audio ? " (audio only)" : ""} (relevancy ${relevancy})`;
+});
+
+// Audio-only readings: no popup window — the clip's sound plays through the
+// HUD itself, and main is told when it ends so continuous mode can chain.
+let audioActive = false;
+function readingAudioDone() {
+  if (!audioActive) return;
+  audioActive = false;
+  readingAudio.removeAttribute("src");
+  readingAudio.load();
+  hud.speakerAudioDone();
+}
+readingAudio.addEventListener("ended", readingAudioDone);
+readingAudio.addEventListener("error", () => readingAudioDone());
+hud.onSpeakerPlayAudio(({ url }) => {
+  audioActive = true;
+  readingAudio.src = url;
+  const p = readingAudio.play();
+  if (p && p.catch) p.catch(() => readingAudioDone());
 });
 
 // ---------- events from main ----------

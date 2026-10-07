@@ -27,8 +27,12 @@ class Speaker {
     this.client = client || new MaskyClient();
     this.timer = null;
     this.candidate = null; // best judged message since last reading
+    this.latest = null; // newest judged message (continuous "speak latest" mode)
+    this.lastSpokenKey = null; // dedupe: never re-read the same message back to back
     this.balance = null; // last known credit balance (null = unknown)
     this.rendering = false;
+    this.playing = false; // a finished clip is still on screen / in the speakers
+    this.playTimer = null; // safety: never let a lost "done" stall continuous mode
   }
 
   config() {
@@ -40,16 +44,19 @@ class Speaker {
     if (!this.timer || !judgment) return;
     if (judgment.kind === "toxic") return;
     const rel = judgment.relevancy ?? 0;
-    if (!this.candidate || rel >= this.candidate.relevancy) {
-      // Chat messages carry {user: {name}, source: {type}} (see
-      // src/sources/*), not flat username/platform fields.
-      this.candidate = {
-        username: msg.user?.name || "a viewer",
-        platform: msg.source?.type || "",
-        text: msg.text,
-        relevancy: rel,
-      };
-    }
+    // Chat messages carry {user: {name}, source: {type}} (see
+    // src/sources/*), not flat username/platform fields.
+    const pick = {
+      username: msg.user?.name || "a viewer",
+      platform: msg.source?.type || "",
+      text: msg.text,
+      relevancy: rel,
+      key: msg.id || `${msg.user?.name || ""}:${msg.text}`,
+    };
+    if (!this.candidate || rel >= this.candidate.relevancy) this.candidate = pick;
+    this.latest = pick;
+    // Continuous mode: an idle speaker reads the newest message immediately.
+    if (this.config().speakLatest) this.maybeSpeakLatest();
   }
 
   start() {
@@ -67,6 +74,10 @@ class Speaker {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.candidate = null;
+    this.latest = null;
+    this.playing = false;
+    clearTimeout(this.playTimer);
+    this.playTimer = null;
     this.emitState();
   }
 
@@ -75,17 +86,19 @@ class Speaker {
   }
 
   /**
-   * One reading: render the window's best candidate, or skip when chat gave
-   * us nothing judged since the last one. `force` substitutes a greeting so
-   * the settings test button always produces a clip.
+   * One cadence reading: render the window's best candidate, or skip when
+   * chat gave us nothing judged since the last one. `force` substitutes a
+   * greeting so the settings test button always produces a clip. In
+   * continuous "speak latest" mode the cadence is inert — readings are
+   * driven by new messages and playback completion instead.
    */
   async tick({ force = false } = {}) {
     const cfg = this.config();
+    if (cfg.speakLatest && !force) return null;
     if (this.rendering) return null;
     const candidate = this.candidate;
     this.candidate = null;
     if (!candidate && !force) return null;
-    if (!cfg.maskyToken) return null;
 
     const pick = candidate || {
       username: "Jev Judge",
@@ -93,25 +106,61 @@ class Speaker {
       text: "Jev Judge here. The share window is connected — I will read your chat's most relevant message on schedule.",
       relevancy: 100,
     };
+    return this.render(pick, { verbatim: force && !candidate });
+  }
 
+  /**
+   * Continuous mode: read the newest judged message, unless we're mid-render,
+   * a clip is still playing, or it's the one we just read. Called when a new
+   * message lands (idle case) and when playback finishes (chained case).
+   */
+  maybeSpeakLatest() {
+    if (!this.running || this.rendering || this.playing) return null;
+    const pick = this.latest;
+    if (!pick || pick.key === this.lastSpokenKey) return null;
+    return this.render(pick);
+  }
+
+  /** Playback finished in the renderer — in continuous mode, chain the next. */
+  notePlaybackDone() {
+    this.playing = false;
+    clearTimeout(this.playTimer);
+    this.playTimer = null;
+    if (this.running && this.config().speakLatest) this.maybeSpeakLatest();
+  }
+
+  /** Render one reading and hand the finished clip to the player. */
+  async render(pick, { verbatim = false } = {}) {
+    const cfg = this.config();
+    if (!cfg.maskyToken) return null;
     this.rendering = true;
     this.emitState();
     try {
+      const output = cfg.audioOnly ? "audio" : "video";
       const { url, line, creditsCharged } = await this.client.speak({
         token: cfg.maskyToken,
         ownerUserId: cfg.avatarOwnerUserId,
         avatarId: cfg.avatarId,
-        text: force && !candidate ? pick.text : this.compose(pick),
+        text: verbatim ? pick.text : this.compose(pick),
+        output,
       });
       if (creditsCharged != null && this.balance != null) {
         this.balance = Math.max(0, this.balance - creditsCharged);
       }
+      if (pick.key) this.lastSpokenKey = pick.key;
+      this.playing = true;
+      // The player reports done (clip ended / errored); if that report is
+      // ever lost (window closed mid-read), recover instead of stalling.
+      clearTimeout(this.playTimer);
+      this.playTimer = setTimeout(() => this.notePlaybackDone(), 180000);
+      if (this.playTimer.unref) this.playTimer.unref();
       this.onPlay({
         url,
         line,
         username: pick.username,
         platform: pick.platform,
         relevancy: pick.relevancy,
+        audio: output === "audio",
       });
       this.refreshBalance();
       return url;
@@ -151,8 +200,11 @@ class Speaker {
       enabled: this.running,
       speaking: this.rendering,
       balance: this.balance,
-      // whole minutes of talking video the balance still buys
-      talkingMinutes: this.balance == null ? null : talkingMinutes(this.balance),
+      // whole minutes of talking the balance still buys, at the active mode's rate
+      talkingMinutes:
+        this.balance == null
+          ? null
+          : talkingMinutes(this.balance, this.config().audioOnly ? "audio" : "video"),
     });
   }
 }

@@ -172,7 +172,9 @@ never read on stream, and an interval with no judged messages is skipped
   that returns you to the connect flow. The default voice is the
   **Jev Judge** avatar on its creator's account; rendering it pays the
   creator through the mask marketplace. Advanced: check *use my own avatar*
-  to render one of your own Masky avatars instead.
+  to render one of your own Masky avatars instead — or click **create
+  avatar** to jump straight into your masky.ai admin console with the
+  new-avatar dialog already open.
 
 <p align="center">
   <img src="docs/screenshots/masky-connected.png" width="420" alt="Settings after connecting: Masky Connected with the account's avatar, name, and a logout button" />
@@ -181,6 +183,16 @@ never read on stream, and an interval with no judged messages is skipped
   (a typical chat line ≈ 0.05–0.13 credits). The settings panel and status
   bar show your balance as **estimated minutes of Jev talking** remaining,
   and the HUD alerts you if you run out of credits mid-stream.
+- **Audio only.** Check *audio only* and readings render just the voice —
+  ≈18× cheaper per second (≈0.0015 credits/s) — played through the HUD
+  itself; the popup window never appears. The balance estimate switches to
+  audio-minutes automatically.
+- **Always speak latest message.** Instead of one reading per interval, Jev
+  reads the *newest* chat message the moment the previous reading finishes
+  (and immediately when a message lands while he's idle). A message is never
+  read twice in a row, and toxic-tagged messages are still skipped. Credits
+  are spent continuously while chat is active, so it pairs well with *audio
+  only*.
 - **OBS setup.** Add the "Jev Speaks" window as a window capture. True
   transparency works with display capture or compositors that keep alpha;
   for plain window capture check *green idle background* and add a chroma

@@ -15,6 +15,7 @@ const PRICING = {
   charsPerSecond: 15,
   textFlat: 0.001,
   videoPerSecond: 0.0265, // TALKING_HEAD_PER_SEC + AUDIO_PER_SEC
+  audioPerSecond: 0.0015, // AUDIO_PER_SEC alone (output:"audio" readings)
 };
 
 class MaskyError extends Error {
@@ -47,10 +48,11 @@ function lineCost(line) {
   return PRICING.textFlat + PRICING.videoPerSecond * seconds;
 }
 
-/** Whole minutes of talking video a credit balance can still buy. */
-function talkingMinutes(balance) {
+/** Whole minutes of talking a credit balance can still buy ("video" | "audio"). */
+function talkingMinutes(balance, output = "video") {
   if (!Number.isFinite(balance) || balance <= 0) return 0;
-  return Math.floor(balance / (PRICING.videoPerSecond * 60));
+  const perSecond = output === "audio" ? PRICING.audioPerSecond : PRICING.videoPerSecond;
+  return Math.floor(balance / (perSecond * 60));
 }
 
 class MaskyClient {
@@ -126,17 +128,19 @@ class MaskyClient {
 
   /**
    * Render the avatar speaking `text` verbatim. Resolves to
-   * {url, line, creditsCharged} with a signed video URL (~1h TTL — play it
-   * promptly, don't store it).
+   * {url, line, creditsCharged} with a signed URL (~1h TTL — play it
+   * promptly, don't store it). `output` "video" (default, talking head) or
+   * "audio" (voice only — ~18x cheaper per second server-side).
    */
-  async speak({ token, ownerUserId, avatarId, text, quality }) {
+  async speak({ token, ownerUserId, avatarId, text, quality, output }) {
     const line = speakableLine(text);
+    const want = output === "audio" ? "audioUrl" : "videoUrl";
     const created = await this.request("POST", `/avatars/${encodeURIComponent(avatarId)}/speak`, {
       token,
       body: {
         text: line,
         textMode: "literal",
-        output: "video",
+        output: output === "audio" ? "audio" : "video",
         avatarOwnerUserId: ownerUserId,
         ...(quality ? { quality } : {}),
       },
@@ -144,18 +148,18 @@ class MaskyClient {
     // Sync completion (rare: Lambda self-invoke unavailable) returns the
     // finished generation inline; the normal 202 hands back an id to poll.
     let generation = created.generation || null;
-    if (!generation || generation.status === "pending" || !generation.videoUrl) {
-      generation = await this.waitForVideo(token, created.generationId || generation?.generationId);
+    if (!generation || generation.status === "pending" || !generation[want]) {
+      generation = await this.waitForResult(token, created.generationId || generation?.generationId, want);
     }
     return {
-      url: generation.videoUrl,
+      url: generation[want],
       line,
       creditsCharged: generation.creditsCharged ?? null,
     };
   }
 
-  /** Poll the generation until its video is rendered (status → video). */
-  async waitForVideo(token, generationId, { timeoutMs = 300000, everyMs = 3000 } = {}) {
+  /** Poll the generation until the wanted media URL is rendered. */
+  async waitForResult(token, generationId, want = "videoUrl", { timeoutMs = 300000, everyMs = 3000 } = {}) {
     if (!generationId) throw new MaskyError("speak returned no generationId");
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -165,10 +169,31 @@ class MaskyClient {
       if (gen.status === "error") {
         throw new MaskyError(gen.error || gen.videoError || "render failed");
       }
-      if (gen.videoUrl) return gen;
+      if (gen[want]) return gen;
       // status pending → audio → video; keep waiting through intermediates
     }
-    throw new MaskyError("render timed out waiting for video");
+    throw new MaskyError(`render timed out waiting for ${want === "audioUrl" ? "audio" : "video"}`);
+  }
+
+  /**
+   * The slug of the connected account's masky.ai page, for building
+   * /{slug}/admin links. Mirrors the site's resolver order (handle →
+   * twitchUsername → uid). Newer API responses carry a top-level `owner`
+   * block even when the account has zero avatars; older ones only expose
+   * owner fields on each avatar. Returns null when nothing resolves.
+   */
+  async ownerSlug(token) {
+    const data = await this.request("GET", "/avatars", { token });
+    const owner = data.owner || {};
+    const first = (Array.isArray(data) ? data : data.avatars || [])[0] || {};
+    return (
+      owner.username ||
+      owner.twitchUsername ||
+      first.avatarOwnerTwitchUsername ||
+      owner.userId ||
+      first.avatarOwnerUserId ||
+      null
+    );
   }
 }
 

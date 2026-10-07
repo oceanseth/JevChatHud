@@ -186,7 +186,12 @@ function sharePollStop() {
 function syncSpeaker() {
   const cfg = settings.get().speaker;
   if (cfg.enabled && cfg.maskyToken) {
-    createShareWindow();
+    // Audio-only mode never pops the window — readings play in the HUD itself.
+    if (cfg.audioOnly) {
+      if (!arranging && shareWin && !shareWin.isDestroyed()) shareWin.close();
+    } else {
+      createShareWindow();
+    }
     speaker.start();
   } else {
     speaker.stop();
@@ -239,20 +244,26 @@ app.whenReady().then(() => {
     onStats: (stats) => send("judge:stats", stats),
   });
 
-  const playOnShare = (payload) => {
-    const w = createShareWindow();
-    if (w.webContents.isLoading()) {
-      w.webContents.once("did-finish-load", () => w.webContents.send("share:play", payload));
+  // Audio-only readings play inside the HUD window (no popup at all);
+  // video readings go to the transparent share window.
+  const playReading = (payload) => {
+    if (payload.audio) {
+      send("speaker:play-audio", payload);
     } else {
-      w.webContents.send("share:play", payload);
+      const w = createShareWindow();
+      if (w.webContents.isLoading()) {
+        w.webContents.once("did-finish-load", () => w.webContents.send("share:play", payload));
+      } else {
+        w.webContents.send("share:play", payload);
+      }
+      sharePollStart();
     }
-    sharePollStart();
     send("speaker:played", payload);
   };
 
   speaker = new Speaker({
     getConfig: () => settings.get().speaker,
-    onPlay: playOnShare,
+    onPlay: playReading,
     onState: (state) => send("speaker:state", state),
     onError: (err) => send("speaker:error", err),
   });
@@ -366,16 +377,35 @@ app.whenReady().then(() => {
     return token ? maskyClient.listAvatars(token) : [];
   });
   // The settings test button plays the bundled sample reading (no Masky
-  // render, no credits): it demos exactly where and how readings appear.
+  // render, no credits): it demos exactly where and how readings appear —
+  // including audio-only mode, where only the clip's sound plays in the HUD.
   ipcMain.handle("speaker:test", () => {
     const url = "assets/test-reading.mp4";
-    playOnShare({
+    playReading({
       url,
       line: "This is the location chat readings will appear in. You can control the size and location of the window in settings.",
       username: "Jev Judge",
       platform: "hud",
       relevancy: 100,
+      audio: !!settings.get().speaker.audioOnly,
     });
+    return url;
+  });
+  // "create avatar" under the own-avatar picker: deep-link into the user's
+  // masky.ai admin console (the #create hash pops the naming dialog there);
+  // without a resolvable account, land on masky.ai itself.
+  ipcMain.handle("speaker:create-avatar", async () => {
+    const token = settings.get().speaker.maskyToken;
+    let url = "https://masky.ai/";
+    if (token) {
+      try {
+        const slug = await maskyClient.ownerSlug(token);
+        if (slug) url = `https://masky.ai/${encodeURIComponent(slug)}/admin#create`;
+      } catch {
+        // token rejected / offline — the landing page is still the right door
+      }
+    }
+    shell.openExternal(url);
     return url;
   });
   ipcMain.handle("speaker:state", () => speaker.emitState());
@@ -417,8 +447,11 @@ app.whenReady().then(() => {
   });
   ipcMain.on("share:done", () => {
     sharePollStop();
+    speaker.notePlaybackDone();
     send("speaker:played-done");
   });
+  // Audio-only readings report completion from the HUD renderer instead.
+  ipcMain.on("speaker:audio-done", () => speaker.notePlaybackDone());
 
   // Mic / local STT. Payloads are Float32Array PCM chunks (16kHz mono) from
   // the renderer's capture; structured clone may hand them over as views.
