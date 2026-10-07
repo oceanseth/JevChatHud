@@ -48,17 +48,34 @@
     </label>
   </div>
 
-  <!-- "judged against context": exactly what rides into each judging batch —
-       the active profile's stream context plus the last minute of mic speech.
-       Slides open from the relevancy label; the arrow collapses it. -->
-  <div id="context-peek">
-    <div id="context-peek-inner">
-      <div id="context-peek-head">
+  <!-- Slider peeks: strips that slide open between the sliders and the tag
+       bar. Clicking "relevancy" shows exactly what rides into each judging
+       batch (stream context + last minute of mic speech); clicking "factual"
+       explains the fact-vs-opinion score. One at a time — opening either
+       collapses the other; the arrow collapses it. -->
+  <div id="context-peek" class="peek">
+    <div class="peek-inner">
+      <div class="peek-head">
         <span>judged against context:</span>
-        <button id="context-peek-close" title="Hide">▴</button>
+        <button id="context-peek-close" class="peek-close" title="Hide">▴</button>
       </div>
       <div class="ctx-row"><span class="ctx-label">stream</span><span id="ctx-stream" class="ctx-text"></span></div>
       <div class="ctx-row"><span class="ctx-label">spoken · last 60s</span><span id="ctx-speech" class="ctx-text"></span></div>
+    </div>
+  </div>
+  <!-- Mirrors FACTUAL_LEVELS in src/judge.js — the four rungs below are that
+       rubric in viewer-facing words; keep them in sync. -->
+  <div id="factual-peek" class="peek">
+    <div class="peek-inner">
+      <div class="peek-head">
+        <span>what the factual slider does:</span>
+        <button id="factual-peek-close" class="peek-close" title="Hide">▴</button>
+      </div>
+      <div class="ctx-row"><span class="ctx-text">Jev scores each message 0–100 on whether it <em>asserts something checkable</em> — fact vs opinion, not whether it's true. Messages scoring below the slider are hidden; it combines with the relevancy slider, and 0 means no constraint.</span></div>
+      <div class="ctx-row"><span class="ctx-label">0</span><span class="ctx-text">pure opinion or reaction — hype, jokes, emote spam, questions</span></div>
+      <div class="ctx-row"><span class="ctx-label">33</span><span class="ctx-text">speculation stated as fact — predictions, rumors, guesses</span></div>
+      <div class="ctx-row"><span class="ctx-label">67</span><span class="ctx-text">the speaker's own experience — concrete, but only they could verify it</span></div>
+      <div class="ctx-row"><span class="ctx-label">100</span><span class="ctx-text">a checkable claim about the world, the game, or the stream</span></div>
     </div>
   </div>
 

@@ -157,31 +157,31 @@ button.active { color: var(--accent); border-color: var(--accent); }
 .metric-label input[type="range"] { flex: 1; min-width: 40px; accent-color: var(--accent); }
 .metric-value { min-width: 3ch; color: var(--text); font-variant-numeric: tabular-nums; }
 .metric-label.inactive { opacity: 0.45; }
-body.jev-off #controls, body.jev-off #tagbar, body.jev-off #context-peek { display: none; }
+body.jev-off #controls, body.jev-off #tagbar, body.jev-off .peek { display: none; }
 
-/* "judged against context" peek: slides open between the sliders and the tag
-   bar when the relevancy label is clicked. */
-#relevancy-label .metric-name { cursor: pointer; text-decoration: underline dotted rgba(124, 92, 255, 0.6); text-underline-offset: 3px; }
-#relevancy-label .metric-name:hover { color: var(--text); }
-#context-peek {
+/* Slider peeks ("judged against context" / "what the factual slider does"):
+   slide open between the sliders and the tag bar when their label is clicked. */
+.metric-label .metric-name { cursor: pointer; text-decoration: underline dotted rgba(124, 92, 255, 0.6); text-underline-offset: 3px; }
+.metric-label .metric-name:hover { color: var(--text); }
+.peek {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.25s ease;
   padding: 0 10px;
 }
-#context-peek.open { grid-template-rows: 1fr; }
-#context-peek-inner {
+.peek.open { grid-template-rows: 1fr; }
+.peek-inner {
   min-height: 0;
   overflow: hidden;
 }
-#context-peek.open #context-peek-inner {
+.peek.open .peek-inner {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgba(19, 19, 28, 0.6);
   margin-bottom: 6px;
   padding: 6px 8px;
 }
-#context-peek-head {
+.peek-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -191,7 +191,7 @@ body.jev-off #controls, body.jev-off #tagbar, body.jev-off #context-peek { displ
   color: var(--text-dim);
   margin-bottom: 4px;
 }
-#context-peek-close {
+.peek-close {
   background: transparent;
   border: none;
   color: var(--text-dim);
@@ -199,7 +199,8 @@ body.jev-off #controls, body.jev-off #tagbar, body.jev-off #context-peek { displ
   font-size: 12px;
   padding: 0 2px;
 }
-#context-peek-close:hover { color: var(--text); }
+.peek-close:hover { color: var(--text); }
+#factual-peek .ctx-text em { font-style: normal; color: var(--text); }
 .ctx-row { display: flex; gap: 8px; font-size: 12px; margin: 2px 0; align-items: baseline; }
 .ctx-label { flex-shrink: 0; color: var(--accent); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
 .ctx-text { color: var(--text-dim); word-break: break-word; }

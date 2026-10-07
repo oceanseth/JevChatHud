@@ -114,7 +114,9 @@ stream, and the ~10s broadcast delay chat reacts behind is absorbed by the
 - **See what Jev sees.** Click the **relevancy** label and a strip slides
   open under the sliders — *judged against context:* your profile's stream
   context plus the rolling last-60s transcript, updating live as you speak.
-  The ▴ arrow tucks it away.
+  Click the **factual** label for the matching explainer — what the
+  fact-vs-opinion score measures and the four rungs of its 0–100 ladder.
+  One strip at a time; the ▴ arrow tucks either away.
 - **Guided install, per OS.** The mic needs a local `whisper-cli` binary and
   a ggml model; if either is missing, clicking the mic opens **Settings →
   Microphone**, where a setup card installs both without leaving the app:

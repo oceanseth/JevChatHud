@@ -581,12 +581,16 @@ function setJevFiltering(on, { animate = true, persist = true } = {}) {
 
 jevToggle.addEventListener("click", () => setJevFiltering(!jevFiltering));
 
-// ---------- "judged against context" peek ----------
-// Clicking the relevancy label slides open a strip showing exactly what rides
-// into each judging batch: the active profile's stream context plus the
-// rolling last-60s mic transcript (live while the mic is on).
+// ---------- slider peeks ----------
+// Clicking "relevancy" slides open a strip showing exactly what rides into
+// each judging batch: the active profile's stream context plus the rolling
+// last-60s mic transcript (live while the mic is on). Clicking "factual"
+// slides open a static explainer of the fact-vs-opinion score. They share the
+// strip zone between the sliders and the tag bar, so opening one closes the
+// other.
 
 const contextPeek = document.getElementById("context-peek");
+const factualPeek = document.getElementById("factual-peek");
 const ctxStream = document.getElementById("ctx-stream");
 const ctxSpeech = document.getElementById("ctx-speech");
 let ctxTimer = null;
@@ -612,9 +616,15 @@ function setContextPeek(open) {
   clearInterval(ctxTimer);
   ctxTimer = null;
   if (open) {
+    factualPeek.classList.remove("open");
     refreshContextPeek();
     ctxTimer = setInterval(refreshContextPeek, 2000);
   }
+}
+
+function setFactualPeek(open) {
+  factualPeek.classList.toggle("open", open);
+  if (open) setContextPeek(false);
 }
 
 document.querySelector("#relevancy-label .metric-name").addEventListener("click", (e) => {
@@ -622,6 +632,11 @@ document.querySelector("#relevancy-label .metric-name").addEventListener("click"
   setContextPeek(!contextPeek.classList.contains("open"));
 });
 document.getElementById("context-peek-close").addEventListener("click", () => setContextPeek(false));
+document.querySelector("#factual-label .metric-name").addEventListener("click", (e) => {
+  e.preventDefault();
+  setFactualPeek(!factualPeek.classList.contains("open"));
+});
+document.getElementById("factual-peek-close").addEventListener("click", () => setFactualPeek(false));
 
 // ---------- streamer mic → local STT context ----------
 // Capture runs here (getUserMedia); 16kHz mono Float32 chunks ship to the main
