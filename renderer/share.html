@@ -10,7 +10,9 @@
   <!-- Fully transparent between readings so OBS shows nothing at all.
        .arranging draws the outline + hint so the streamer can place the
        window; .chroma fills the body green for OBS chroma-key capture. -->
-  <div id="arrange-hint">drag to position — click Done in settings</div>
+  <div id="arrange-hint">drag to move · pull the corner to resize · ✕ saves it</div>
+  <button id="arrange-close" title="Save this placement and close">✕</button>
+  <div id="resize-grip" title="Drag to resize"></div>
   <div id="card" class="hidden">
     <div id="coin-wrap">
       <video id="clip" playsinline></video>

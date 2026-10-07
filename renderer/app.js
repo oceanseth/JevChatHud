@@ -581,6 +581,48 @@ function setJevFiltering(on, { animate = true, persist = true } = {}) {
 
 jevToggle.addEventListener("click", () => setJevFiltering(!jevFiltering));
 
+// ---------- "judged against context" peek ----------
+// Clicking the relevancy label slides open a strip showing exactly what rides
+// into each judging batch: the active profile's stream context plus the
+// rolling last-60s mic transcript (live while the mic is on).
+
+const contextPeek = document.getElementById("context-peek");
+const ctxStream = document.getElementById("ctx-stream");
+const ctxSpeech = document.getElementById("ctx-speech");
+let ctxTimer = null;
+
+async function refreshContextPeek() {
+  if (!settings) return;
+  const profile = settings.profiles.find((p) => p.id === settings.activeProfileId);
+  ctxStream.textContent =
+    profile?.context?.trim() || "no stream context — add one to the profile in settings";
+  try {
+    const speech = await hud.sttRecent();
+    ctxSpeech.classList.toggle("live", !!speech);
+    ctxSpeech.textContent =
+      speech ||
+      (micListening ? "listening — nothing heard in the last minute" : "mic off — click 🎙 to add your voice as context");
+  } catch {
+    ctxSpeech.textContent = "";
+  }
+}
+
+function setContextPeek(open) {
+  contextPeek.classList.toggle("open", open);
+  clearInterval(ctxTimer);
+  ctxTimer = null;
+  if (open) {
+    refreshContextPeek();
+    ctxTimer = setInterval(refreshContextPeek, 2000);
+  }
+}
+
+document.querySelector("#relevancy-label .metric-name").addEventListener("click", (e) => {
+  e.preventDefault();
+  setContextPeek(!contextPeek.classList.contains("open"));
+});
+document.getElementById("context-peek-close").addEventListener("click", () => setContextPeek(false));
+
 // ---------- streamer mic → local STT context ----------
 // Capture runs here (getUserMedia); 16kHz mono Float32 chunks ship to the main
 // process where a local whisper.cpp binary transcribes them. The judge reads
@@ -935,6 +977,7 @@ pinBtn.addEventListener("click", async () => {
 // ---------- settings panel ----------
 
 const overlay = document.getElementById("overlay");
+const panelBody = document.getElementById("panel-body");
 const apiKeyInput = document.getElementById("api-key");
 const modelInput = document.getElementById("model");
 const editProfileSelect = document.getElementById("edit-profile-select");
@@ -977,6 +1020,7 @@ function renderSources() {
     remove.addEventListener("click", () => {
       editingProfile.sources.splice(idx, 1);
       renderSources();
+      scheduleProfileSave();
     });
     head.append(type, gap, remove);
     item.append(head);
@@ -994,6 +1038,7 @@ function renderSources() {
           field.key === "channelIds"
             ? input.value.split(",").map((s) => s.trim()).filter(Boolean)
             : input.value.trim();
+        scheduleProfileSave();
       });
       label.append(input);
       item.append(label);
@@ -1008,6 +1053,7 @@ function loadProfileIntoEditor(profile) {
     : { id: null, name: "", context: "", sources: [] };
   profileNameInput.value = editingProfile.name || "";
   profileContextInput.value = editingProfile.context || "";
+  savedSourcesSig = JSON.stringify(editingProfile.sources || []);
   renderSources();
 }
 
@@ -1026,12 +1072,14 @@ function renderEditProfileSelect(selectedId) {
   editProfileSelect.value = selectedId || "";
 }
 
-editProfileSelect.addEventListener("change", () => {
+editProfileSelect.addEventListener("change", async () => {
+  await flushProfileSave();
   const p = settings.profiles.find((x) => x.id === editProfileSelect.value);
   loadProfileIntoEditor(p || null);
 });
 
-document.getElementById("new-profile-btn").addEventListener("click", () => {
+document.getElementById("new-profile-btn").addEventListener("click", async () => {
+  await flushProfileSave();
   renderEditProfileSelect("");
   loadProfileIntoEditor(null);
 });
@@ -1048,6 +1096,7 @@ for (const btn of document.querySelectorAll("#add-source-row .add-source")) {
   btn.addEventListener("click", () => {
     editingProfile.sources.push({ type: btn.dataset.type });
     renderSources();
+    scheduleProfileSave();
     // Put the new source's first field in front of the user immediately.
     const items = sourcesList.querySelectorAll(".source-item");
     items[items.length - 1]?.querySelector("input")?.focus();
@@ -1085,38 +1134,104 @@ function openSettingsPanel({ focusSources = false, focusMic = false } = {}) {
 document.getElementById("settings-btn").addEventListener("click", () => openSettingsPanel());
 document.getElementById("add-source-shortcut").addEventListener("click", () => openSettingsPanel({ focusSources: true }));
 
-document.getElementById("close-panel-btn").addEventListener("click", () => {
+function closeSettingsPanel() {
+  flushProfileSave();
   overlay.classList.add("hidden");
-});
+}
+
+document.getElementById("panel-close").addEventListener("click", closeSettingsPanel);
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!userOverlay.classList.contains("hidden")) closeUserProfile();
-  else if (!overlay.classList.contains("hidden")) overlay.classList.add("hidden");
+  else if (!overlay.classList.contains("hidden")) closeSettingsPanel();
 });
 
-document.getElementById("save-panel-btn").addEventListener("click", async () => {
-  settings = await hud.updateSettings({
-    typesafeApiKey: apiKeyInput.value.trim(),
-    model: modelInput.value.trim() || "jev-latest",
-  });
+// ---------- settings autosave (there is no save button) ----------
+
+apiKeyInput.addEventListener("change", async () => {
+  settings = await hud.updateSettings({ typesafeApiKey: apiKeyInput.value.trim() });
+});
+modelInput.addEventListener("change", async () => {
+  settings = await hud.updateSettings({ model: modelInput.value.trim() || "jev-latest" });
+});
+
+// Profile edits debounce into a save; the live profile's streams restart only
+// when its SOURCES actually changed (a context/name edit must not reconnect
+// Twitch mid-typing — the judge reads context fresh from settings anyway).
+let profileSaveTimer = null;
+let savedSourcesSig = "[]";
+
+function scheduleProfileSave() {
+  clearTimeout(profileSaveTimer);
+  profileSaveTimer = setTimeout(saveProfileNow, 1000);
+}
+
+function flushProfileSave() {
+  if (!profileSaveTimer) return Promise.resolve();
+  return saveProfileNow();
+}
+
+async function saveProfileNow() {
+  clearTimeout(profileSaveTimer);
+  profileSaveTimer = null;
   editingProfile.name = profileNameInput.value.trim();
   editingProfile.context = profileContextInput.value;
-  if (editingProfile.name || editingProfile.sources.length) {
-    const saved = await hud.saveProfile(editingProfile);
-    editingProfile.id = saved.id;
-    settings = await hud.getSettings();
-    renderEditProfileSelect(saved.id);
-    // If we edited the live profile, restart its streams with the new config.
-    if (settings.activeProfileId === saved.id) {
-      clearFeed();
-      await hud.activateProfile(saved.id);
-    }
-  }
+  // Never materialize a profile out of an untouched "(new profile)" form.
+  if (!editingProfile.id && !editingProfile.name && !editingProfile.sources.length) return;
+  const sig = JSON.stringify(editingProfile.sources || []);
+  const saved = await hud.saveProfile(editingProfile);
+  editingProfile.id = saved.id;
+  settings = await hud.getSettings();
+  renderEditProfileSelect(saved.id);
   renderProfileSelect();
   updateEmptyState();
-  overlay.classList.add("hidden");
-});
+  if (settings.activeProfileId === saved.id && sig !== savedSourcesSig) {
+    clearFeed();
+    await hud.activateProfile(saved.id);
+  }
+  savedSourcesSig = sig;
+}
+
+profileNameInput.addEventListener("input", scheduleProfileSave);
+profileContextInput.addEventListener("input", scheduleProfileSave);
+
+// Scrollbar-less panel: the wheel scrolls natively; a click-drag on any
+// non-interactive area scrolls too. A real drag never counts as a click.
+(() => {
+  const INTERACTIVE = "input, textarea, select, button, a";
+  let drag = null;
+  let dragged = false;
+  panelBody.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || e.target.closest(INTERACTIVE)) return;
+    drag = { y: e.clientY, top: panelBody.scrollTop };
+    dragged = false;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    if (Math.abs(dy) > 4) dragged = true;
+    if (dragged) {
+      panelBody.scrollTop = drag.top - dy;
+      panelBody.classList.add("drag-scrolling");
+      e.preventDefault();
+    }
+  });
+  window.addEventListener("mouseup", () => {
+    drag = null;
+    panelBody.classList.remove("drag-scrolling");
+  });
+  panelBody.addEventListener(
+    "click",
+    (e) => {
+      if (!dragged) return;
+      dragged = false;
+      e.stopPropagation();
+      e.preventDefault();
+    },
+    true,
+  );
+})();
 
 // ---------- "Jev speaks" share window ----------
 
@@ -1272,11 +1387,21 @@ speakerTestBtn.addEventListener("click", async () => {
   }
 });
 
+function syncArrangeBtn() {
+  speakerArrangeBtn.textContent = arrangingShare ? "done" : "set location";
+  speakerArrangeBtn.classList.toggle("active", arrangingShare);
+}
+
 speakerArrangeBtn.addEventListener("click", async () => {
   arrangingShare = !arrangingShare;
   await hud.speakerArrange(arrangingShare);
-  speakerArrangeBtn.textContent = arrangingShare ? "done positioning" : "position window";
-  speakerArrangeBtn.classList.toggle("active", arrangingShare);
+  syncArrangeBtn();
+});
+
+// The ✕ on the share window itself also ends arrange mode.
+hud.onSpeakerArranged((on) => {
+  arrangingShare = !!on;
+  syncArrangeBtn();
 });
 
 const speakerStat = document.getElementById("speaker-stat");

@@ -111,6 +111,10 @@ stream, and the ~10s broadcast delay chat reacts behind is absorbed by the
 - **Settings → Microphone** picks the input device and has a **test mic**
   button: records ~3s with a live level meter, runs it through the exact same
   pipeline, and shows you what Jev heard.
+- **See what Jev sees.** Click the **relevancy** label and a strip slides
+  open under the sliders — *judged against context:* your profile's stream
+  context plus the rolling last-60s transcript, updating live as you speak.
+  The ▴ arrow tucks it away.
 - **Guided install, per OS.** The mic needs a local `whisper-cli` binary and
   a ggml model; if either is missing, clicking the mic opens **Settings →
   Microphone**, where a setup card installs both without leaving the app:
@@ -172,8 +176,13 @@ never read on stream, and an interval with no judged messages is skipped
 - **OBS setup.** Add the "Jev Speaks" window as a window capture. True
   transparency works with display capture or compositors that keep alpha;
   for plain window capture check *green idle background* and add a chroma
-  key filter. Use *position window* in settings to drag it where you want
-  it on screen.
+  key filter.
+- **Place and size it.** Click **set location** in settings: the window shows
+  a dashed outline you can drag anywhere, with a corner grip to resize (the
+  reading scales with the window) and an **✕** that saves the placement. You
+  can also just grab the card mid-reading and drag it — the window is only
+  clickable while Jev is actually on screen and your cursor is over him, and
+  stays click-through the rest of the time.
 - **Try it** with the *test reading* button — Jev announces himself so you
   can check placement and audio before going live.
 
@@ -203,9 +212,11 @@ everything they need to know.*
 The app runs on a generated deep-space backdrop with translucent, blurred
 surfaces (glassmorphism) and image-based toolbar icons — built to look at home
 next to OBS on a professional streamer's second monitor. **Settings** opens
-from the gear, the File menu, or `Cmd+,`, and closes with `Esc`. The
-Appearance section controls the chat font, size, density, and timestamps —
-changes apply live. Packaged builds (`npm run dist`) produce a proper
+from the gear, the File menu, or `Cmd+,`, and closes with the ✕ or `Esc` —
+there is no save button: every change saves the moment you make it. The panel
+has no scrollbar either; scroll with the wheel or just grab an empty spot and
+drag. The Appearance section controls the chat font, size, density, and
+timestamps — changes apply live. Packaged builds (`npm run dist`) produce a proper
 `JevChatHud.app` with its own icon.
 
 <p align="center">

@@ -42,6 +42,32 @@ window.share.onArrange((on) => {
   document.body.classList.toggle("arranging", !!on);
 });
 
+// Arrange-mode chrome: ✕ saves the placement and exits; the corner grip
+// resizes the window (screen coords, so the math survives the window
+// resizing underneath the cursor).
+document.getElementById("arrange-close").addEventListener("click", () => {
+  window.share.arrangeDone();
+});
+
+const grip = document.getElementById("resize-grip");
+let resizing = null;
+grip.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  try {
+    grip.setPointerCapture(e.pointerId);
+  } catch {
+    /* synthetic events have no active pointer to capture */
+  }
+  resizing = { x: e.screenX, y: e.screenY, w: window.innerWidth, h: window.innerHeight };
+});
+grip.addEventListener("pointermove", (e) => {
+  if (!resizing) return;
+  window.share.setSize(resizing.w + (e.screenX - resizing.x), resizing.h + (e.screenY - resizing.y));
+});
+grip.addEventListener("pointerup", () => {
+  resizing = null;
+});
+
 window.share.onChroma((on) => {
   document.body.classList.toggle("chroma", !!on);
 });

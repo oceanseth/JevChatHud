@@ -37,7 +37,48 @@ body.arranging {
 }
 body.arranging #arrange-hint { display: block; }
 
+/* Arrange-mode chrome: ✕ saves the placement, the corner grip resizes. Both
+   opt out of the body's drag region so they stay clickable. */
+#arrange-close {
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(124, 92, 255, 0.8);
+  background: rgba(19, 19, 28, 0.9);
+  color: #e8e8ee;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  z-index: 3;
+}
+#arrange-close:hover { background: rgba(124, 92, 255, 0.35); }
+#resize-grip {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  -webkit-app-region: no-drag;
+  background:
+    linear-gradient(135deg, transparent 50%, rgba(124, 92, 255, 0.9) 50%);
+  border-bottom-right-radius: 4px;
+  z-index: 3;
+}
+body.arranging #arrange-close,
+body.arranging #resize-grip { display: block; }
+
 #card {
+  /* The whole card is an OS drag region: while a reading is visible (the
+     window is interactive only when the cursor is over it), grabbing Jev
+     moves the window. */
+  -webkit-app-region: drag;
   position: absolute;
   inset: 0;
   display: flex;
@@ -57,10 +98,11 @@ body.arranging #arrange-hint { display: block; }
 }
 
 /* The clip renders on Masky's white background; the circular coin mask
-   crops it to the judge's face, matching the HUD's header coin. */
+   crops it to the judge's face, matching the HUD's header coin. Sized in
+   vmin so resizing the window scales the whole reading. */
 #coin-wrap {
-  width: min(62vmin, 300px);
-  height: min(62vmin, 300px);
+  width: 62vmin;
+  height: 62vmin;
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid #7c5cff;
@@ -89,7 +131,7 @@ body.arranging #arrange-hint { display: block; }
   display: block;
   font-weight: 700;
   color: #b7a4ff;
-  font-size: 12px;
+  font-size: clamp(10px, 2.2vmin, 18px);
   margin-bottom: 2px;
 }
 #caption-text {
@@ -97,4 +139,5 @@ body.arranging #arrange-hint { display: block; }
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   overflow: hidden;
+  font-size: clamp(11px, 2.7vmin, 23px);
 }

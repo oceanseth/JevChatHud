@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, systemPreferences, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, systemPreferences, shell, dialog, screen } = require("electron");
 const path = require("path");
 const { Settings } = require("./src/settings");
 const { SourceManager } = require("./src/sources");
@@ -132,14 +132,49 @@ function createShareWindow() {
   shareWin.webContents.on("did-finish-load", () => {
     shareWin.webContents.send("share:chroma", settings.get().speaker.chroma);
   });
-  const saveBounds = () => {
-    if (!shareWin || shareWin.isDestroyed()) return;
-    settings.update({ speaker: { ...settings.get().speaker, shareBounds: shareWin.getBounds() } });
-  };
-  shareWin.on("moved", saveBounds);
-  shareWin.on("resized", saveBounds);
-  shareWin.on("closed", () => { shareWin = null; });
+  shareWin.on("moved", saveShareBounds);
+  shareWin.on("resized", saveShareBounds);
+  shareWin.on("closed", () => {
+    shareWin = null;
+    shareInteractive = false;
+    sharePollStop();
+  });
   return shareWin;
+}
+
+function saveShareBounds() {
+  if (!shareWin || shareWin.isDestroyed()) return;
+  settings.update({ speaker: { ...settings.get().speaker, shareBounds: shareWin.getBounds() } });
+}
+
+// While a reading is on screen the card is a drag region, so the streamer can
+// grab it and move the window. The window still has to be click-through the
+// rest of the time, so a cursor poll flips interactivity only while the
+// pointer is actually over the window. Arrange mode pins it interactive.
+let sharePoll = null;
+let shareInteractive = false;
+
+function shareSetInteractive(on) {
+  if (!shareWin || shareWin.isDestroyed() || shareInteractive === on) return;
+  shareInteractive = on;
+  shareWin.setIgnoreMouseEvents(!on);
+}
+
+function sharePollStart() {
+  if (sharePoll) return;
+  sharePoll = setInterval(() => {
+    if (!shareWin || shareWin.isDestroyed() || arranging) return;
+    const p = screen.getCursorScreenPoint();
+    const b = shareWin.getBounds();
+    const inside = p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
+    shareSetInteractive(inside);
+  }, 150);
+}
+
+function sharePollStop() {
+  clearInterval(sharePoll);
+  sharePoll = null;
+  if (!arranging) shareSetInteractive(false);
 }
 
 function syncSpeaker() {
@@ -207,6 +242,7 @@ app.whenReady().then(() => {
       } else {
         w.webContents.send("share:play", payload);
       }
+      sharePollStart();
       send("speaker:played", payload);
     },
     onState: (state) => send("speaker:state", state),
@@ -279,12 +315,43 @@ app.whenReady().then(() => {
   ipcMain.handle("speaker:arrange", (_e, on) => {
     arranging = !!on;
     const w = createShareWindow();
+    shareInteractive = arranging;
     w.setIgnoreMouseEvents(!arranging);
-    w.webContents.send("share:arrange", arranging);
+    // A freshly created window is still loading — a send now would be lost.
+    if (w.webContents.isLoading()) {
+      w.webContents.once("did-finish-load", () => w.webContents.send("share:arrange", arranging));
+    } else {
+      w.webContents.send("share:arrange", arranging);
+    }
     if (arranging) w.focus();
     else syncSpeaker(); // closes the window again if the feature is off
   });
-  ipcMain.on("share:done", () => send("speaker:played-done"));
+  // The ✕ on the share window itself: save the placement and leave arrange mode.
+  ipcMain.on("share:arrange-done", () => {
+    arranging = false;
+    if (shareWin && !shareWin.isDestroyed()) {
+      saveShareBounds();
+      shareInteractive = false;
+      shareWin.setIgnoreMouseEvents(true);
+      shareWin.webContents.send("share:arrange", false);
+    }
+    syncSpeaker();
+    send("speaker:arranged", false);
+  });
+  // The resize grip in arrange mode drives the window size from the renderer.
+  let shareSizeSave = null;
+  ipcMain.on("share:set-size", (_e, size) => {
+    if (!shareWin || shareWin.isDestroyed()) return;
+    const width = Math.max(220, Math.round(Number(size?.width) || 0));
+    const height = Math.max(260, Math.round(Number(size?.height) || 0));
+    shareWin.setSize(width, height);
+    clearTimeout(shareSizeSave);
+    shareSizeSave = setTimeout(saveShareBounds, 400);
+  });
+  ipcMain.on("share:done", () => {
+    sharePollStop();
+    send("speaker:played-done");
+  });
 
   // Mic / local STT. Payloads are Float32Array PCM chunks (16kHz mono) from
   // the renderer's capture; structured clone may hand them over as views.
@@ -303,6 +370,8 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle("stt:status", () => transcriber.available());
+  // The rolling transcript exactly as the judge will receive it (context peek).
+  ipcMain.handle("stt:recent", () => transcriber.recentSpeech());
   ipcMain.handle("stt:chunk", async (_e, pcm) => {
     const res = await transcriber.transcribe(toFloat32(pcm));
     if (res.text) transcriber.record(res.text);
