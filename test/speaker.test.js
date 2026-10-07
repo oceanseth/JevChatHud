@@ -272,3 +272,115 @@ test("talkingMinutes uses the cheaper audio rate for audio-only balances", () =>
   assert.equal(talkingMinutes(1), 0);
   assert.equal(talkingMinutes(1, "audio"), 11);
 });
+
+test("read with user avatars: a chatter on Masky reads their own message, verbatim", async () => {
+  const speaks = [];
+  const lookups = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      speaks.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+    lookupUserAvatar: async (_t, name) => {
+      lookups.push(name);
+      return name === "chatfan" ? { ownerUserId: "twitch:42", avatarId: "self", name: "ChatFan" } : null;
+    },
+  });
+  const cfg = { ...baseCfg, readUserAvatars: true };
+  const { speaker, events } = makeSpeaker({ cfg, client });
+  speaker.start();
+  speaker.noteJudged(
+    { id: "m1", user: { name: "ChatFan" }, source: { type: "twitch" }, text: "great run!" },
+    { relevancy: 80, kind: "chatter" },
+  );
+  await speaker.tick();
+  // their avatar, their words — no "ChatFan says:" preamble
+  assert.equal(speaks.length, 1);
+  assert.equal(speaks[0].avatarId, "self");
+  assert.equal(speaks[0].ownerUserId, "twitch:42");
+  assert.equal(speaks[0].text, "great run!");
+  assert.deepEqual(lookups, ["chatfan"]);
+  // the HUD caption still names the chatter
+  assert.equal(events.plays[0].username, "ChatFan");
+  speaker.stop();
+});
+
+test("read with user avatars: chatters not on Masky fall back to the configured avatar + preamble", async () => {
+  const speaks = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      speaks.push(args);
+      return { url: "u", line: args.text, creditsCharged: 0 };
+    },
+    lookupUserAvatar: async () => null,
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, readUserAvatars: true }, client });
+  speaker.start();
+  speaker.noteJudged(
+    { id: "m2", user: { name: "rando" }, source: { type: "twitch" }, text: "hi" },
+    { relevancy: 50, kind: "chatter" },
+  );
+  await speaker.tick();
+  assert.equal(speaks[0].avatarId, baseCfg.avatarId);
+  assert.equal(speaks[0].text, "rando says: hi");
+  speaker.stop();
+});
+
+test("read with user avatars: lookups are cached per username, negatives included", async () => {
+  let lookups = 0;
+  const client = fakeClient({
+    lookupUserAvatar: async () => {
+      lookups++;
+      return null;
+    },
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, readUserAvatars: true }, client });
+  speaker.start();
+  for (const id of ["a1", "a2", "a3"]) {
+    speaker.noteJudged(
+      { id, user: { name: "Regular" }, source: { type: "twitch" }, text: `msg ${id}` },
+      { relevancy: 60, kind: "chatter" },
+    );
+    await speaker.tick();
+  }
+  assert.equal(lookups, 1);
+  speaker.stop();
+});
+
+test("read with user avatars: a failed lookup falls back instead of killing the reading", async () => {
+  const speaks = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      speaks.push(args);
+      return { url: "u", line: args.text, creditsCharged: 0 };
+    },
+    lookupUserAvatar: async () => {
+      throw new Error("masky 500");
+    },
+  });
+  const { speaker, events } = makeSpeaker({ cfg: { ...baseCfg, readUserAvatars: true }, client });
+  speaker.start();
+  speaker.noteJudged(
+    { id: "m3", user: { name: "x" }, source: { type: "twitch" }, text: "yo" },
+    { relevancy: 70, kind: "chatter" },
+  );
+  await speaker.tick();
+  assert.equal(events.errors.length, 0);
+  assert.equal(speaks[0].avatarId, baseCfg.avatarId);
+  speaker.stop();
+});
+
+test("read with user avatars: the test greeting never triggers a lookup", async () => {
+  let lookups = 0;
+  const client = fakeClient({
+    lookupUserAvatar: async () => {
+      lookups++;
+      return { ownerUserId: "u", avatarId: "a" };
+    },
+  });
+  const { speaker } = makeSpeaker({ cfg: { ...baseCfg, readUserAvatars: true }, client });
+  speaker.start();
+  await speaker.tick({ force: true });
+  assert.equal(lookups, 0);
+  speaker.stop();
+});

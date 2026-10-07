@@ -10,6 +10,12 @@ const { MaskyClient, MaskyError, talkingMinutes } = require("./masky");
 
 const INTERVALS_MIN = [1, 5, 10];
 
+// "Read with user avatars": how long one username→avatar lookup stays good.
+// Long enough that an active chatter costs one API call per stream segment,
+// short enough that enrolling a voice on Masky mid-stream gets noticed.
+const USER_AVATAR_TTL_MS = 10 * 60000;
+const USER_AVATAR_CACHE_MAX = 500;
+
 class Speaker {
   /**
    * @param {object} opts
@@ -33,6 +39,7 @@ class Speaker {
     this.rendering = false;
     this.playing = false; // a finished clip is still on screen / in the speakers
     this.playTimer = null; // safety: never let a lost "done" stall continuous mode
+    this.userAvatarCache = new Map(); // username → {avatar|null, at} (negatives cached too)
   }
 
   config() {
@@ -137,11 +144,12 @@ class Speaker {
     this.emitState();
     try {
       const output = cfg.audioOnly ? "audio" : "video";
+      const reading = await this.readingPlan(pick, cfg, verbatim);
       const { url, line, creditsCharged } = await this.client.speak({
         token: cfg.maskyToken,
-        ownerUserId: cfg.avatarOwnerUserId,
-        avatarId: cfg.avatarId,
-        text: verbatim ? pick.text : this.compose(pick),
+        ownerUserId: reading.ownerUserId,
+        avatarId: reading.avatarId,
+        text: reading.text,
         output,
       });
       if (creditsCharged != null && this.balance != null) {
@@ -179,6 +187,52 @@ class Speaker {
 
   compose(pick) {
     return `${pick.username} says: ${pick.text}`;
+  }
+
+  /**
+   * Which avatar reads this message, and what it says. Default: the
+   * configured avatar reading "<user> says: <text>". With "read with user
+   * avatars" on, a chatter whose Twitch name exists on Masky with a
+   * voice-ready avatar reads their own message — spoken verbatim, no
+   * "says" preamble, because the avatar *is* them. Only real chat
+   * messages qualify (pick.key); test greetings always use the
+   * configured avatar.
+   */
+  async readingPlan(pick, cfg, verbatim) {
+    const fallback = {
+      ownerUserId: cfg.avatarOwnerUserId,
+      avatarId: cfg.avatarId,
+      text: verbatim ? pick.text : this.compose(pick),
+    };
+    if (!cfg.readUserAvatars || verbatim || !pick.key) return fallback;
+    const own = await this.userAvatar(pick.username, cfg.maskyToken);
+    if (!own) return fallback;
+    return { ownerUserId: own.ownerUserId, avatarId: own.avatarId, text: pick.text };
+  }
+
+  /**
+   * Cached username→avatar lookup, negatives included — chat repeats the
+   * same handles constantly and most of them are not on Masky. A failed
+   * lookup reads as "not on Masky" for this reading (and is cached, so a
+   * flaky API can't double the spend-path latency for long).
+   */
+  async userAvatar(username, token) {
+    const key = String(username || "").trim().toLowerCase();
+    if (!key) return null;
+    const hit = this.userAvatarCache.get(key);
+    if (hit && Date.now() - hit.at < USER_AVATAR_TTL_MS) return hit.avatar;
+    let avatar = null;
+    try {
+      avatar = await this.client.lookupUserAvatar(token, key);
+    } catch {
+      avatar = null;
+    }
+    this.userAvatarCache.delete(key);
+    if (this.userAvatarCache.size >= USER_AVATAR_CACHE_MAX) {
+      this.userAvatarCache.delete(this.userAvatarCache.keys().next().value);
+    }
+    this.userAvatarCache.set(key, { avatar, at: Date.now() });
+    return avatar;
   }
 
   /** Non-fatal: the balance endpoint may not be deployed yet (returns null). */

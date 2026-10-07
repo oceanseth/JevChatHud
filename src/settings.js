@@ -29,6 +29,7 @@ const DEFAULTS = {
     useOwnAvatar: false, // advanced: render one of the user's own avatars
     audioOnly: false, // render voice only (cheaper) and never show the share window
     speakLatest: false, // continuous mode: read the newest message as soon as the last reading ends
+    readUserAvatars: false, // chatters who exist on Masky with a voiced avatar read their own messages
     chroma: false, // solid green idle background for OBS chroma key
     clickThrough: false, // share window never grabs the mouse; clicks fall through
     shareBounds: null, // last {x,y,width,height} of the share window

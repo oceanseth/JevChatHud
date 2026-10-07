@@ -72,3 +72,51 @@ test("ownerSlug prefers handle, then twitch, then uid — falling back to avatar
   // nothing resolvable -> null (caller falls back to masky.ai)
   assert.equal(await client({ avatars: [] }).ownerSlug("t"), null);
 });
+
+test("lookupUserAvatar prefers the voiced self-avatar and lowercases the query", async () => {
+  let requested;
+  const fetchImpl = async (url) => {
+    requested = url;
+    return jsonResponse({
+      found: true,
+      owner: { userId: "twitch:42", twitchUsername: "chatfan" },
+      avatars: [
+        { avatarId: "noVoice", avatarOwnerUserId: "twitch:42", isDefaultAvatar: false, voiceId: null },
+        { avatarId: "pub", avatarOwnerUserId: "twitch:42", isDefaultAvatar: false, voiceId: "v1", displayName: "Alt" },
+        { avatarId: "self", avatarOwnerUserId: "twitch:42", isDefaultAvatar: true, voiceId: "v2", displayName: "ChatFan" },
+      ],
+    });
+  };
+  const client = new MaskyClient({ fetchImpl });
+  const res = await client.lookupUserAvatar("mky_t", "ChatFan");
+  assert.ok(requested.endsWith("/avatars/lookup?user=chatfan"));
+  assert.deepEqual(res, { ownerUserId: "twitch:42", avatarId: "self", name: "ChatFan" });
+});
+
+test("lookupUserAvatar: not found, voiceless, 404, and blank all resolve null", async () => {
+  const mk = (body, status) => new MaskyClient({ fetchImpl: async () => jsonResponse(body, status) });
+  assert.equal(await mk({ found: false }).lookupUserAvatar("t", "ghost"), null);
+  assert.equal(
+    await mk({ found: true, owner: {}, avatars: [{ avatarId: "a", voiceId: null }] }).lookupUserAvatar("t", "mute"),
+    null,
+  );
+  // endpoint not deployed yet -> feature silently off, not an error
+  assert.equal(await mk({ error: "Route not found" }, 404).lookupUserAvatar("t", "x"), null);
+  assert.equal(await mk({}).lookupUserAvatar("t", "   "), null);
+});
+
+test("lookupUserAvatar falls back to a voiced public avatar when the self-avatar is mute", async () => {
+  const client = new MaskyClient({
+    fetchImpl: async () =>
+      jsonResponse({
+        found: true,
+        owner: {},
+        avatars: [
+          { avatarId: "self", avatarOwnerUserId: "u", isDefaultAvatar: true, voiceId: null },
+          { avatarId: "pub", avatarOwnerUserId: "u", isDefaultAvatar: false, voiceId: "v", displayName: "Alt" },
+        ],
+      }),
+  });
+  const res = await client.lookupUserAvatar("t", "someone");
+  assert.equal(res.avatarId, "pub");
+});

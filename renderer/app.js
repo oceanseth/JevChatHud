@@ -1275,6 +1275,7 @@ const speakerAvatarSelect = document.getElementById("speaker-avatar");
 const createAvatarBtn = document.getElementById("create-avatar-btn");
 const speakerAudioOnly = document.getElementById("speaker-audio-only");
 const speakerSpeakLatest = document.getElementById("speaker-speak-latest");
+const speakerUserAvatars = document.getElementById("speaker-user-avatars");
 const readingAudio = document.getElementById("reading-audio");
 const speakerChroma = document.getElementById("speaker-chroma");
 const speakerPassthrough = document.getElementById("speaker-passthrough");
@@ -1299,6 +1300,7 @@ function renderSpeakerUI() {
   if (cfg.useOwnAvatar) populateOwnAvatars();
   speakerAudioOnly.checked = !!cfg.audioOnly;
   speakerSpeakLatest.checked = !!cfg.speakLatest;
+  speakerUserAvatars.checked = !!cfg.readUserAvatars;
   speakerChroma.checked = !!cfg.chroma;
   speakerPassthrough.checked = !!cfg.clickThrough;
   speakerNote.textContent = "";
@@ -1366,6 +1368,7 @@ speakerEnabledCheck.addEventListener("change", async () => {
 speakerInterval.addEventListener("change", () => updateSpeaker({ intervalMin: Number(speakerInterval.value) }));
 speakerAudioOnly.addEventListener("change", () => updateSpeaker({ audioOnly: speakerAudioOnly.checked }));
 speakerSpeakLatest.addEventListener("change", () => updateSpeaker({ speakLatest: speakerSpeakLatest.checked }));
+speakerUserAvatars.addEventListener("change", () => updateSpeaker({ readUserAvatars: speakerUserAvatars.checked }));
 speakerChroma.addEventListener("change", () => updateSpeaker({ chroma: speakerChroma.checked }));
 speakerPassthrough.addEventListener("change", () => updateSpeaker({ clickThrough: speakerPassthrough.checked }));
 

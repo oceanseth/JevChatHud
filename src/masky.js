@@ -176,6 +176,35 @@ class MaskyClient {
   }
 
   /**
+   * Resolve a chat username to that person's own speakable Masky avatar:
+   * GET /avatars/lookup matches uid → Masky handle → Twitch username and
+   * returns their self-avatar plus any publicly renderable ones. Picks the
+   * best voice-ready avatar (self-avatar first — it *is* the person), or
+   * null when the user isn't on Masky, has no voiced avatar, or the
+   * endpoint isn't deployed yet (404).
+   */
+  async lookupUserAvatar(token, username) {
+    const user = String(username || "").trim().toLowerCase();
+    if (!user) return null;
+    let data;
+    try {
+      data = await this.request("GET", `/avatars/lookup?user=${encodeURIComponent(user)}`, { token });
+    } catch (err) {
+      if (err.status === 404) return null; // endpoint not deployed yet
+      throw err;
+    }
+    if (!data.found) return null;
+    const voiced = (data.avatars || []).filter((a) => a.voiceId || a.humeVoiceId);
+    if (!voiced.length) return null;
+    const pick = voiced.find((a) => a.isDefaultAvatar) || voiced[0];
+    return {
+      ownerUserId: pick.avatarOwnerUserId,
+      avatarId: pick.avatarId,
+      name: pick.displayName || user,
+    };
+  }
+
+  /**
    * The slug of the connected account's masky.ai page, for building
    * /{slug}/admin links. Mirrors the site's resolver order (handle →
    * twitchUsername → uid). Newer API responses carry a top-level `owner`
