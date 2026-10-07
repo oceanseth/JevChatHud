@@ -105,6 +105,9 @@ body.arranging #resize-grip { display: block; }
   height: 62vmin;
   border-radius: 50%;
   overflow: hidden;
+  /* border-radius alone can't clip the composited <video> on all platforms —
+     frames can escape the circle while playing; clip-path masks reliably */
+  clip-path: circle(50%);
   border: 3px solid #7c5cff;
   background: #0e0e12;
   box-shadow: 0 0 24px rgba(124, 92, 255, 0.55), 0 10px 30px rgba(0, 0, 0, 0.6);

@@ -164,6 +164,12 @@ function sharePollStart() {
   if (sharePoll) return;
   sharePoll = setInterval(() => {
     if (!shareWin || shareWin.isDestroyed() || arranging) return;
+    // "mouseclicks pass through to application": never go interactive, so
+    // clicks over the overlay always land on the window underneath.
+    if (settings.get().speaker.clickThrough) {
+      shareSetInteractive(false);
+      return;
+    }
     const p = screen.getCursorScreenPoint();
     const b = shareWin.getBounds();
     const inside = p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
@@ -233,18 +239,20 @@ app.whenReady().then(() => {
     onStats: (stats) => send("judge:stats", stats),
   });
 
+  const playOnShare = (payload) => {
+    const w = createShareWindow();
+    if (w.webContents.isLoading()) {
+      w.webContents.once("did-finish-load", () => w.webContents.send("share:play", payload));
+    } else {
+      w.webContents.send("share:play", payload);
+    }
+    sharePollStart();
+    send("speaker:played", payload);
+  };
+
   speaker = new Speaker({
     getConfig: () => settings.get().speaker,
-    onPlay: (payload) => {
-      const w = createShareWindow();
-      if (w.webContents.isLoading()) {
-        w.webContents.once("did-finish-load", () => w.webContents.send("share:play", payload));
-      } else {
-        w.webContents.send("share:play", payload);
-      }
-      sharePollStart();
-      send("speaker:played", payload);
-    },
+    onPlay: playOnShare,
     onState: (state) => send("speaker:state", state),
     onError: (err) => send("speaker:error", err),
   });
@@ -357,7 +365,19 @@ app.whenReady().then(() => {
     const token = settings.get().speaker.maskyToken;
     return token ? maskyClient.listAvatars(token) : [];
   });
-  ipcMain.handle("speaker:test", () => speaker.tick({ force: true }));
+  // The settings test button plays the bundled sample reading (no Masky
+  // render, no credits): it demos exactly where and how readings appear.
+  ipcMain.handle("speaker:test", () => {
+    const url = "assets/test-reading.mp4";
+    playOnShare({
+      url,
+      line: "This is the location chat readings will appear in. You can control the size and location of the window in settings.",
+      username: "Jev Judge",
+      platform: "hud",
+      relevancy: 100,
+    });
+    return url;
+  });
   ipcMain.handle("speaker:state", () => speaker.emitState());
   ipcMain.handle("speaker:arrange", (_e, on) => {
     arranging = !!on;

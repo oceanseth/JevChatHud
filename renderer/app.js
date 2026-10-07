@@ -1273,6 +1273,7 @@ const speakerOwnAvatar = document.getElementById("speaker-own-avatar");
 const ownAvatarRow = document.getElementById("own-avatar-row");
 const speakerAvatarSelect = document.getElementById("speaker-avatar");
 const speakerChroma = document.getElementById("speaker-chroma");
+const speakerPassthrough = document.getElementById("speaker-passthrough");
 const speakerTestBtn = document.getElementById("speaker-test-btn");
 const speakerArrangeBtn = document.getElementById("speaker-arrange-btn");
 const speakerNote = document.getElementById("speaker-note");
@@ -1293,6 +1294,7 @@ function renderSpeakerUI() {
   ownAvatarRow.classList.toggle("hidden", !cfg.useOwnAvatar);
   if (cfg.useOwnAvatar) populateOwnAvatars();
   speakerChroma.checked = !!cfg.chroma;
+  speakerPassthrough.checked = !!cfg.clickThrough;
   speakerNote.textContent = "";
 }
 
@@ -1330,6 +1332,7 @@ async function populateOwnAvatars() {
   speakerAvatarSelect.replaceChildren();
   try {
     const avatars = await hud.speakerAvatars();
+    avatars.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
     for (const a of avatars) {
       const opt = document.createElement("option");
       opt.value = a.avatarId;
@@ -1356,6 +1359,7 @@ speakerEnabledCheck.addEventListener("change", async () => {
 
 speakerInterval.addEventListener("change", () => updateSpeaker({ intervalMin: Number(speakerInterval.value) }));
 speakerChroma.addEventListener("change", () => updateSpeaker({ chroma: speakerChroma.checked }));
+speakerPassthrough.addEventListener("change", () => updateSpeaker({ clickThrough: speakerPassthrough.checked }));
 
 maskyLoginBtn.addEventListener("click", async () => {
   maskyLoginBtn.disabled = true;
@@ -1427,18 +1431,15 @@ speakerAvatarSelect.addEventListener("change", async () => {
   }
 });
 
+// Plays the bundled sample clip (no Masky render, no credits): shows exactly
+// where and how readings will appear.
 speakerTestBtn.addEventListener("click", async () => {
-  if (!speakerCfg().maskyToken) {
-    speakerNote.textContent = "connect your Masky account first";
-    return;
-  }
   speakerTestBtn.disabled = true;
-  speakerNote.textContent = "rendering a test reading (spends a fraction of a credit)…";
   try {
-    const url = await hud.speakerTest();
-    speakerNote.textContent = url
-      ? "test reading is playing in the share window"
-      : "test skipped — see any error above";
+    await hud.speakerTest();
+    speakerNote.textContent = "test reading is playing in the share window";
+  } catch (err) {
+    speakerNote.textContent = `test failed: ${err.message || err}`;
   } finally {
     speakerTestBtn.disabled = false;
   }

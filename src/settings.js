@@ -28,6 +28,7 @@ const DEFAULTS = {
     avatarId: "Ev1WizD5smJnxHWJXEHZ", // the Jev Judge avatar
     useOwnAvatar: false, // advanced: render one of the user's own avatars
     chroma: false, // solid green idle background for OBS chroma key
+    clickThrough: false, // share window never grabs the mouse; clicks fall through
     shareBounds: null, // last {x,y,width,height} of the share window
   },
   appearance: {

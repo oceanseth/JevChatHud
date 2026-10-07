@@ -190,9 +190,13 @@ never read on stream, and an interval with no judged messages is skipped
   reading scales with the window) and an **✕** that saves the placement. You
   can also just grab the card mid-reading and drag it — the window is only
   clickable while Jev is actually on screen and your cursor is over him, and
-  stays click-through the rest of the time.
-- **Try it** with the *test reading* button — Jev announces himself so you
-  can check placement and audio before going live.
+  stays click-through the rest of the time. If even that is too grabby —
+  say the overlay sits over your game — check **mouseclicks pass through to
+  application** and the window never takes the mouse at all: clicks land on
+  whatever is underneath, and *set location* remains the way to move it.
+- **Try it** with the *test reading* button — it plays a bundled sample clip
+  (no credits spent) of Jev explaining that this is where readings appear,
+  so you can check placement and audio before going live.
 
 ## User profiling
 

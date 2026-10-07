@@ -54,6 +54,9 @@ body { display: flex; flex-direction: column; }
   padding: 0;
   border-radius: 50%;
   overflow: hidden;
+  /* border-radius alone can't clip the composited, scale()-transformed
+     video/img below — frames escape the circle; clip-path masks reliably */
+  clip-path: circle(50%);
   z-index: 6;
   border: 2px solid var(--accent);
   background: #0e0e12;
@@ -119,6 +122,10 @@ select, input[type="text"], input[type="password"], textarea {
   font: inherit;
 }
 select:focus, input:focus, textarea:focus { outline: 1px solid var(--accent); }
+/* Windows renders the option popup in the page's color scheme — without this
+   the styled dark select opens a glaring white native list. */
+select { color-scheme: dark; }
+select option { background: #15151d; color: var(--text); }
 
 button {
   background: var(--field);
