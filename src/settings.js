@@ -16,6 +16,19 @@ const DEFAULTS = {
     deviceId: "", // renderer mediaDevices deviceId; "" = system default
     label: "", // display label of the picked device (deviceIds are opaque)
   },
+  // "Jev speaks": the OBS-shareable window where the avatar reads the most
+  // relevant message on a cadence, rendered with the USER's Masky credits.
+  speaker: {
+    enabled: false,
+    intervalMin: 1, // minutes between readings: 1 | 5 | 10
+    maskyToken: "", // user's mky_ key (pasted or issued by Login with Masky)
+    maskyAccountName: "", // display label of the connected identity
+    avatarOwnerUserId: "twitch:11867613", // Jev Judge's creator (default avatar)
+    avatarId: "Ev1WizD5smJnxHWJXEHZ", // the Jev Judge avatar
+    useOwnAvatar: false, // advanced: render one of the user's own avatars
+    chroma: false, // solid green idle background for OBS chroma key
+    shareBounds: null, // last {x,y,width,height} of the share window
+  },
   appearance: {
     fontFamily: "system", // key into the renderer's font map
     fontSize: 13, // px, chat feed only
@@ -36,6 +49,7 @@ class Settings {
       this.data = { ...DEFAULTS, ...raw };
       this.data.appearance = { ...DEFAULTS.appearance, ...(raw.appearance || {}) };
       this.data.mic = { ...DEFAULTS.mic, ...(raw.mic || {}) };
+      this.data.speaker = { ...DEFAULTS.speaker, ...(raw.speaker || {}) };
       // v0.5 → v0.6: "see all" became the Jev Judge toggle (inverted), and the
       // "facts only" checkbox became the factual slider. factsOnly meant "the
       // one slider thresholds factuality", which is exactly factual=old

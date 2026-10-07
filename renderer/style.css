@@ -390,6 +390,18 @@ body.show-timestamps .msg .time { display: inline; }
 .row select { flex: 1; }
 
 .field.grow { flex: 1; }
+#speaker-setup.hidden, #own-avatar-row.hidden { display: none; }
+#speaker-enabled-label, .check-label {
+  color: var(--text-dim);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.check-label { margin: 8px 0; }
+#speaker-interval { flex-shrink: 0; }
+#own-avatar-row select { flex: 1; }
+#speaker-balance:empty, #speaker-note:empty { display: none; }
 #appearance-size { width: 100%; margin-top: 4px; accent-color: var(--accent); }
 #appearance-timestamps-label { color: var(--text-dim); font-size: 12px; display: flex; align-items: center; gap: 5px; }
 

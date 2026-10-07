@@ -120,6 +120,39 @@ stream, and the ~10s broadcast delay chat reacts behind is absorbed by the
   <img src="docs/screenshots/settings-mic.png" width="420" alt="Settings: microphone device picker and test" />
 </p>
 
+## Jev reads your chat on stream
+
+Enable **Jev speaks** (Settings → Jev speaks) and once per interval — 1, 5, or
+10 minutes — Jev picks the most relevant judged message since the last reading
+and *reads it aloud* in a separate always-on-top window built for OBS: fully
+transparent and click-through between readings, so nothing shows on screen
+until the Judge appears, speaks, and fades away. Toxic-tagged messages are
+never read on stream, and an interval with no judged messages is skipped
+(nothing rendered, nothing spent).
+
+<p align="center">
+  <img src="docs/screenshots/jev-speaks.png" width="340" alt="The share window mid-reading: Jev Judge speaking in the coin with the message caption below" />
+</p>
+
+- **Your Masky account powers it.** Readings are rendered by
+  [masky.ai](https://masky.ai) and spend *your* credits — connect with
+  **Login with Masky** (opens your browser; the token can be revoked from
+  your Masky account anytime) or paste an API token. The default voice is
+  the **Jev Judge** avatar on its creator's account; rendering it pays the
+  creator through the mask marketplace. Advanced: check *use my own avatar*
+  to render one of your own Masky avatars instead.
+- **Cost + estimate.** A reading costs ≈0.027 credits per second of speech
+  (a typical chat line ≈ 0.05–0.13 credits). The settings panel and status
+  bar show your balance as **estimated minutes of Jev talking** remaining,
+  and the HUD alerts you if you run out of credits mid-stream.
+- **OBS setup.** Add the "Jev Speaks" window as a window capture. True
+  transparency works with display capture or compositors that keep alpha;
+  for plain window capture check *green idle background* and add a chroma
+  key filter. Use *position window* in settings to drag it where you want
+  it on screen.
+- **Try it** with the *test reading* button — Jev announces himself so you
+  can check placement and audio before going live.
+
 ## User profiling
 
 Click any username in the feed to open their profile card, built from a

@@ -920,6 +920,7 @@ function openSettingsPanel({ focusSources = false } = {}) {
   timestampsCheck.checked = !!a.timestamps;
   populateMicDevices();
   micTestResult.textContent = "";
+  renderSpeakerUI();
   const active = settings.profiles.find((p) => p.id === settings.activeProfileId);
   renderEditProfileSelect(active?.id || "");
   loadProfileIntoEditor(active || null);
@@ -965,6 +966,209 @@ document.getElementById("save-panel-btn").addEventListener("click", async () => 
   overlay.classList.add("hidden");
 });
 
+// ---------- "Jev speaks" share window ----------
+
+// Must match the defaults in src/settings.js: the Jev Judge avatar on its
+// creator's account (rendering it spends the USER's credits; the creator
+// earns their share through the mask marketplace).
+const JEV_AVATAR = { ownerUserId: "twitch:11867613", avatarId: "Ev1WizD5smJnxHWJXEHZ" };
+
+const speakerEnabledCheck = document.getElementById("speaker-enabled");
+const speakerInterval = document.getElementById("speaker-interval");
+const speakerSetup = document.getElementById("speaker-setup");
+const maskyLoginBtn = document.getElementById("masky-login-btn");
+const maskyStatus = document.getElementById("masky-status");
+const maskyTokenInput = document.getElementById("masky-token");
+const speakerBalance = document.getElementById("speaker-balance");
+const speakerOwnAvatar = document.getElementById("speaker-own-avatar");
+const ownAvatarRow = document.getElementById("own-avatar-row");
+const speakerAvatarSelect = document.getElementById("speaker-avatar");
+const speakerChroma = document.getElementById("speaker-chroma");
+const speakerTestBtn = document.getElementById("speaker-test-btn");
+const speakerArrangeBtn = document.getElementById("speaker-arrange-btn");
+const speakerNote = document.getElementById("speaker-note");
+let arrangingShare = false;
+let lastCreditAlert = 0;
+
+function speakerCfg() {
+  return settings.speaker || {};
+}
+
+function renderSpeakerUI() {
+  const cfg = speakerCfg();
+  speakerEnabledCheck.checked = !!cfg.enabled;
+  speakerInterval.value = String(cfg.intervalMin || 1);
+  speakerSetup.classList.toggle("hidden", !cfg.enabled);
+  maskyStatus.textContent = cfg.maskyToken
+    ? `connected${cfg.maskyAccountName ? ` as ${cfg.maskyAccountName}` : ""}`
+    : "not connected";
+  maskyTokenInput.value = "";
+  maskyTokenInput.placeholder = cfg.maskyToken ? "token saved — paste to replace" : "mky_...";
+  speakerOwnAvatar.checked = !!cfg.useOwnAvatar;
+  ownAvatarRow.classList.toggle("hidden", !cfg.useOwnAvatar);
+  if (cfg.useOwnAvatar) populateOwnAvatars();
+  speakerChroma.checked = !!cfg.chroma;
+  speakerNote.textContent = "";
+}
+
+async function updateSpeaker(patch) {
+  settings.speaker = await hud.speakerUpdate(patch);
+  return settings.speaker;
+}
+
+async function populateOwnAvatars() {
+  speakerAvatarSelect.replaceChildren();
+  try {
+    const avatars = await hud.speakerAvatars();
+    for (const a of avatars) {
+      const opt = document.createElement("option");
+      opt.value = a.avatarId;
+      opt.textContent = a.name;
+      opt.dataset.owner = a.ownerUserId;
+      speakerAvatarSelect.append(opt);
+    }
+    const cfg = speakerCfg();
+    if (cfg.useOwnAvatar && cfg.avatarId) speakerAvatarSelect.value = cfg.avatarId;
+    if (!avatars.length) speakerNote.textContent = "no avatars on this Masky account — create one on masky.ai first";
+  } catch (err) {
+    speakerNote.textContent = `could not list avatars: ${err.message || err}`;
+  }
+}
+
+speakerEnabledCheck.addEventListener("change", async () => {
+  const on = speakerEnabledCheck.checked;
+  await updateSpeaker({ enabled: on, intervalMin: Number(speakerInterval.value) });
+  speakerSetup.classList.toggle("hidden", !on);
+  if (on && !speakerCfg().maskyToken) {
+    speakerNote.textContent = "connect your Masky account (or paste a token) to start";
+  }
+});
+
+speakerInterval.addEventListener("change", () => updateSpeaker({ intervalMin: Number(speakerInterval.value) }));
+speakerChroma.addEventListener("change", () => updateSpeaker({ chroma: speakerChroma.checked }));
+
+maskyLoginBtn.addEventListener("click", async () => {
+  maskyLoginBtn.disabled = true;
+  maskyStatus.textContent = "waiting for browser login…";
+  try {
+    const res = await hud.speakerLogin();
+    settings = await hud.getSettings();
+    maskyStatus.textContent = `connected${res.accountName ? ` as ${res.accountName}` : ""}`;
+    speakerNote.textContent = "";
+  } catch (err) {
+    maskyStatus.textContent = "not connected";
+    speakerNote.textContent = `login failed: ${err.message || err}`;
+  } finally {
+    maskyLoginBtn.disabled = false;
+  }
+});
+
+maskyTokenInput.addEventListener("change", async () => {
+  const token = maskyTokenInput.value.trim();
+  if (!token) return;
+  maskyStatus.textContent = "checking token…";
+  try {
+    await hud.speakerVerifyToken(token);
+    settings = await hud.getSettings();
+    maskyStatus.textContent = "connected (API token)";
+    speakerNote.textContent = "";
+  } catch (err) {
+    maskyStatus.textContent = "not connected";
+    speakerNote.textContent = `token rejected: ${err.message || err}`;
+  }
+});
+
+speakerOwnAvatar.addEventListener("change", async () => {
+  const own = speakerOwnAvatar.checked;
+  ownAvatarRow.classList.toggle("hidden", !own);
+  if (!own) {
+    await updateSpeaker({
+      useOwnAvatar: false,
+      avatarOwnerUserId: JEV_AVATAR.ownerUserId,
+      avatarId: JEV_AVATAR.avatarId,
+    });
+    return;
+  }
+  await populateOwnAvatars();
+  const opt = speakerAvatarSelect.selectedOptions[0];
+  if (opt) {
+    await updateSpeaker({ useOwnAvatar: true, avatarOwnerUserId: opt.dataset.owner, avatarId: opt.value });
+  }
+});
+
+speakerAvatarSelect.addEventListener("change", async () => {
+  const opt = speakerAvatarSelect.selectedOptions[0];
+  if (opt) {
+    await updateSpeaker({ useOwnAvatar: true, avatarOwnerUserId: opt.dataset.owner, avatarId: opt.value });
+  }
+});
+
+speakerTestBtn.addEventListener("click", async () => {
+  if (!speakerCfg().maskyToken) {
+    speakerNote.textContent = "connect your Masky account first";
+    return;
+  }
+  speakerTestBtn.disabled = true;
+  speakerNote.textContent = "rendering a test reading (spends a fraction of a credit)…";
+  try {
+    const url = await hud.speakerTest();
+    speakerNote.textContent = url
+      ? "test reading is playing in the share window"
+      : "test skipped — see any error above";
+  } finally {
+    speakerTestBtn.disabled = false;
+  }
+});
+
+speakerArrangeBtn.addEventListener("click", async () => {
+  arrangingShare = !arrangingShare;
+  await hud.speakerArrange(arrangingShare);
+  speakerArrangeBtn.textContent = arrangingShare ? "done positioning" : "position window";
+  speakerArrangeBtn.classList.toggle("active", arrangingShare);
+});
+
+const speakerStat = document.getElementById("speaker-stat");
+hud.onSpeakerState((state) => {
+  if (state.balance != null) {
+    const mins = state.talkingMinutes;
+    speakerBalance.textContent =
+      `Masky balance: ${state.balance.toFixed(2)} credits` +
+      (mins != null ? ` ≈ ${mins} minute${mins === 1 ? "" : "s"} of Jev talking` : "");
+  } else if (speakerCfg().maskyToken) {
+    speakerBalance.textContent = "balance unknown (Masky balance endpoint not available yet)";
+  } else {
+    speakerBalance.textContent = "";
+  }
+  speakerStat.textContent = state.enabled
+    ? state.speaking
+      ? "🎭 rendering…"
+      : state.talkingMinutes != null
+        ? `🎭 ~${state.talkingMinutes}min left`
+        : "🎭 on"
+    : "";
+});
+
+hud.onSpeakerError((err) => {
+  if (err.code === "insufficient_credits") {
+    speakerNote.textContent = "out of Masky credits — Jev can't speak until you top up on masky.ai";
+    speakerStat.textContent = "🎭 out of credits";
+    // One alert per 10 minutes, not one per failed reading.
+    if (Date.now() - lastCreditAlert > 600000) {
+      lastCreditAlert = Date.now();
+      alert(
+        "Jev has run out of Masky credits.\n\n" +
+          "The share window will stay silent until you add credits to your Masky account (masky.ai).",
+      );
+    }
+  } else {
+    speakerNote.textContent = `Jev speaks error: ${err.message || err.code}`;
+  }
+});
+
+hud.onSpeakerPlayed(({ username, relevancy }) => {
+  speakerNote.textContent = `now reading ${username} (relevancy ${relevancy})`;
+});
+
 // ---------- events from main ----------
 
 hud.onMessage(addMessage);
@@ -1006,4 +1210,5 @@ hud.onOpenSettings(() => openSettingsPanel());
     micListening = false;
     await setMicListening(true, { persist: false });
   }
+  hud.speakerState(); // pushes the current Jev-speaks state to the statusbar
 })();

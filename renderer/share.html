@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; media-src 'self' https:" />
+  <title>Jev Speaks</title>
+  <link rel="stylesheet" href="share.css" />
+</head>
+<body>
+  <!-- Fully transparent between readings so OBS shows nothing at all.
+       .arranging draws the outline + hint so the streamer can place the
+       window; .chroma fills the body green for OBS chroma-key capture. -->
+  <div id="arrange-hint">drag to position — click Done in settings</div>
+  <div id="card" class="hidden">
+    <div id="coin-wrap">
+      <video id="clip" playsinline></video>
+    </div>
+    <div id="caption">
+      <span id="caption-user"></span>
+      <span id="caption-text"></span>
+    </div>
+  </div>
+  <script src="share.js"></script>
+</body>
+</html>

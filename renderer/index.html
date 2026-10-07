@@ -71,6 +71,7 @@
   <footer id="statusbar">
     <span id="stats">no messages yet</span>
     <span id="mic-status"></span>
+    <span id="speaker-stat"></span>
     <span id="judge-error" class="error"></span>
   </footer>
 
@@ -122,6 +123,43 @@
         <div id="mic-level"><div id="mic-level-fill"></div></div>
       </div>
       <div id="mic-test-result" class="section-note block"></div>
+
+      <h2>Jev speaks</h2>
+      <div class="section-note block">Once per interval, Jev reads your chat's most relevant message aloud
+        in a separate transparent window you can add to OBS — invisible between readings. Rendering spends
+        <em>your</em> Masky credits (the avatar's creator earns their share).</div>
+      <div class="row">
+        <label id="speaker-enabled-label">
+          <input type="checkbox" id="speaker-enabled" /> Jev speaks most relevant message every
+        </label>
+        <select id="speaker-interval">
+          <option value="1">1 minute</option>
+          <option value="5">5 minutes</option>
+          <option value="10">10 minutes</option>
+        </select>
+      </div>
+      <div id="speaker-setup" class="hidden">
+        <div class="row">
+          <button id="masky-login-btn" class="primary">Connect Masky account</button>
+          <span id="masky-status" class="section-note">not connected</span>
+        </div>
+        <label class="field">or paste a Masky API token
+          <input type="password" id="masky-token" placeholder="mky_..." />
+        </label>
+        <div id="speaker-balance" class="section-note block"></div>
+        <label id="own-avatar-label" class="check-label">
+          <input type="checkbox" id="speaker-own-avatar" /> use my own avatar instead of Jev Judge (advanced)
+        </label>
+        <div class="row hidden" id="own-avatar-row"><select id="speaker-avatar"></select></div>
+        <label id="chroma-label" class="check-label">
+          <input type="checkbox" id="speaker-chroma" /> green idle background (for OBS chroma key; default is true transparency)
+        </label>
+        <div class="row">
+          <button id="speaker-test-btn">test reading</button>
+          <button id="speaker-arrange-btn">position window</button>
+        </div>
+        <div id="speaker-note" class="section-note block"></div>
+      </div>
 
       <h2>Profiles</h2>
       <div class="row">

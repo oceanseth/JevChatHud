@@ -1,21 +1,27 @@
-const { app, BrowserWindow, Menu, ipcMain, systemPreferences } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, systemPreferences, shell } = require("electron");
 const path = require("path");
 const { Settings } = require("./src/settings");
 const { SourceManager } = require("./src/sources");
 const { Judge } = require("./src/judge");
 const { UserStats } = require("./src/user_stats");
 const { Transcriber } = require("./src/stt");
+const { Speaker } = require("./src/speaker");
+const { MaskyClient } = require("./src/masky");
+const { maskyLogin } = require("./src/masky_login");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
 // (dock, notifications, userData path stays "jevchathud" via package.json name).
 app.setName("JevChatHud");
 
 let win = null;
+let shareWin = null;
 let settings = null;
 let sources = null;
 let judge = null;
 let userStats = null;
 let transcriber = null;
+let speaker = null;
+let arranging = false;
 // Messages awaiting judgment, so a judgment can be attributed to its user.
 const awaitingJudgment = new Map();
 const AWAITING_MAX = 2000;
@@ -89,6 +95,64 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  // The share overlay has no chrome of its own; it lives and dies with the HUD.
+  win.on("closed", () => {
+    win = null;
+    if (shareWin && !shareWin.isDestroyed()) shareWin.close();
+  });
+}
+
+// The OBS-shareable Jev-speaks overlay: transparent and click-through while
+// idle so nothing shows on stream between readings. Mouse events only wake
+// up in arrange mode (positioning from settings).
+function createShareWindow() {
+  if (shareWin && !shareWin.isDestroyed()) return shareWin;
+  const saved = settings.get().speaker.shareBounds;
+  shareWin = new BrowserWindow({
+    width: saved?.width || 360,
+    height: saved?.height || 440,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
+    transparent: true,
+    frame: false,
+    hasShadow: false,
+    resizable: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: "Jev Speaks",
+    webPreferences: {
+      preload: path.join(__dirname, "preload-share.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  shareWin.setAlwaysOnTop(true, "screen-saver");
+  shareWin.setIgnoreMouseEvents(true);
+  shareWin.loadFile(path.join(__dirname, "renderer", "share.html"));
+  shareWin.webContents.on("did-finish-load", () => {
+    shareWin.webContents.send("share:chroma", settings.get().speaker.chroma);
+  });
+  const saveBounds = () => {
+    if (!shareWin || shareWin.isDestroyed()) return;
+    settings.update({ speaker: { ...settings.get().speaker, shareBounds: shareWin.getBounds() } });
+  };
+  shareWin.on("moved", saveBounds);
+  shareWin.on("resized", saveBounds);
+  shareWin.on("closed", () => { shareWin = null; });
+  return shareWin;
+}
+
+function syncSpeaker() {
+  const cfg = settings.get().speaker;
+  if (cfg.enabled && cfg.maskyToken) {
+    createShareWindow();
+    speaker.start();
+  } else {
+    speaker.stop();
+    if (!arranging && shareWin && !shareWin.isDestroyed()) shareWin.close();
+  }
+  if (shareWin && !shareWin.isDestroyed()) {
+    shareWin.webContents.send("share:chroma", cfg.chroma);
+  }
 }
 
 function activateProfile(profileId) {
@@ -126,10 +190,26 @@ app.whenReady().then(() => {
       if (msg) {
         awaitingJudgment.delete(id);
         userStats.recordJudgment(msg, judgment);
+        speaker.noteJudged(msg, judgment);
       }
       send("chat:judged", { id, judgment });
     },
     onStats: (stats) => send("judge:stats", stats),
+  });
+
+  speaker = new Speaker({
+    getConfig: () => settings.get().speaker,
+    onPlay: (payload) => {
+      const w = createShareWindow();
+      if (w.webContents.isLoading()) {
+        w.webContents.once("did-finish-load", () => w.webContents.send("share:play", payload));
+      } else {
+        w.webContents.send("share:play", payload);
+      }
+      send("speaker:played", payload);
+    },
+    onState: (state) => send("speaker:state", state),
+    onError: (err) => send("speaker:error", err),
   });
 
   sources = new SourceManager({
@@ -160,6 +240,51 @@ app.whenReady().then(() => {
   ipcMain.handle("profile:activate", (_e, id) => activateProfile(id));
   ipcMain.handle("user:profile", (_e, { platform, name }) => userStats.get(platform, name));
 
+  // "Jev speaks" share window + Masky account plumbing.
+  const maskyClient = new MaskyClient();
+  ipcMain.handle("speaker:update", (_e, patch) => {
+    settings.update({ speaker: { ...settings.get().speaker, ...patch } });
+    syncSpeaker();
+    return settings.get().speaker;
+  });
+  ipcMain.handle("speaker:login", async () => {
+    const { accessToken, avatar } = await maskyLogin({ openExternal: shell.openExternal });
+    settings.update({
+      speaker: {
+        ...settings.get().speaker,
+        maskyToken: accessToken,
+        maskyAccountName: avatar?.name || "",
+      },
+    });
+    syncSpeaker();
+    speaker.refreshBalance();
+    return { connected: true, accountName: avatar?.name || "" };
+  });
+  ipcMain.handle("speaker:verify-token", async (_e, token) => {
+    // A pasted token is verified by listing the account's avatars — cheap,
+    // read-only, and proves both auth and the avatars:read/generate grant.
+    const avatars = await maskyClient.listAvatars(token);
+    settings.update({ speaker: { ...settings.get().speaker, maskyToken: token } });
+    syncSpeaker();
+    speaker.refreshBalance();
+    return { connected: true, avatars };
+  });
+  ipcMain.handle("speaker:avatars", async () => {
+    const token = settings.get().speaker.maskyToken;
+    return token ? maskyClient.listAvatars(token) : [];
+  });
+  ipcMain.handle("speaker:test", () => speaker.tick({ force: true }));
+  ipcMain.handle("speaker:state", () => speaker.emitState());
+  ipcMain.handle("speaker:arrange", (_e, on) => {
+    arranging = !!on;
+    const w = createShareWindow();
+    w.setIgnoreMouseEvents(!arranging);
+    w.webContents.send("share:arrange", arranging);
+    if (arranging) w.focus();
+    else syncSpeaker(); // closes the window again if the feature is off
+  });
+  ipcMain.on("share:done", () => send("speaker:played-done"));
+
   // Mic / local STT. Payloads are Float32Array PCM chunks (16kHz mono) from
   // the renderer's capture; structured clone may hand them over as views.
   const toFloat32 = (p) =>
@@ -189,6 +314,7 @@ app.whenReady().then(() => {
   // Resume the last active profile on launch.
   const last = settings.get().activeProfileId;
   if (last) activateProfile(last);
+  syncSpeaker();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -197,6 +323,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   sources?.stopAll();
+  speaker?.stop();
   userStats?.save();
   app.quit();
 });
