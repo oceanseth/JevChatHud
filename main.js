@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Menu, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, systemPreferences } = require("electron");
 const path = require("path");
 const { Settings } = require("./src/settings");
 const { SourceManager } = require("./src/sources");
 const { Judge } = require("./src/judge");
 const { UserStats } = require("./src/user_stats");
+const { Transcriber } = require("./src/stt");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
 // (dock, notifications, userData path stays "jevchathud" via package.json name).
@@ -14,6 +15,7 @@ let settings = null;
 let sources = null;
 let judge = null;
 let userStats = null;
+let transcriber = null;
 // Messages awaiting judgment, so a judgment can be attributed to its user.
 const awaitingJudgment = new Map();
 const AWAITING_MAX = 2000;
@@ -111,10 +113,12 @@ app.whenReady().then(() => {
 
   settings = new Settings(app.getPath("userData"));
   userStats = new UserStats(app.getPath("userData"));
+  transcriber = new Transcriber(settings.get().mic || {});
 
   judge = new Judge({
     getConfig: () => settings.get(),
     getProfile: () => settings.profile(settings.get().activeProfileId),
+    getSpeech: () => transcriber.recentSpeech(),
     onJudged: (id, judgment) => {
       // Fold the judgment into the user's lifetime stats before notifying the
       // renderer, so a profile refresh triggered by this event sees it.
@@ -155,6 +159,30 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("profile:activate", (_e, id) => activateProfile(id));
   ipcMain.handle("user:profile", (_e, { platform, name }) => userStats.get(platform, name));
+
+  // Mic / local STT. Payloads are Float32Array PCM chunks (16kHz mono) from
+  // the renderer's capture; structured clone may hand them over as views.
+  const toFloat32 = (p) =>
+    p instanceof Float32Array
+      ? p
+      : ArrayBuffer.isView(p)
+        ? new Float32Array(p.buffer, p.byteOffset, Math.floor(p.byteLength / 4))
+        : new Float32Array(p);
+  ipcMain.handle("mic:access", async () => {
+    if (process.platform !== "darwin") return true;
+    try {
+      return await systemPreferences.askForMediaAccess("microphone");
+    } catch {
+      return true; // MAS-style restriction failure: let getUserMedia decide
+    }
+  });
+  ipcMain.handle("stt:status", () => transcriber.available());
+  ipcMain.handle("stt:chunk", async (_e, pcm) => {
+    const res = await transcriber.transcribe(toFloat32(pcm));
+    if (res.text) transcriber.record(res.text);
+    return res;
+  });
+  ipcMain.handle("stt:test", (_e, pcm) => transcriber.transcribe(toFloat32(pcm)));
 
   createWindow();
 

@@ -47,12 +47,14 @@ class Judge {
    * @param {object} opts
    * @param {() => {typesafeApiKey: string, model: string}} opts.getConfig
    * @param {() => {name: string, context: string}|null} opts.getProfile
+   * @param {() => string} [opts.getSpeech] recent streamer speech (mic STT), "" if none
    * @param {(id: string, judgment: object|null) => void} opts.onJudged
    * @param {(stats: object) => void} opts.onStats
    */
-  constructor({ getConfig, getProfile, onJudged, onStats }) {
+  constructor({ getConfig, getProfile, getSpeech, onJudged, onStats }) {
     this.getConfig = getConfig;
     this.getProfile = getProfile;
+    this.getSpeech = getSpeech || (() => "");
     this.onJudged = onJudged;
     this.onStats = onStats;
     this.queue = [];
@@ -79,6 +81,10 @@ class Judge {
 
   buildRequest(batch) {
     const profile = this.getProfile() || {};
+    // When the mic is listening, the streamer's recent speech is the sharpest
+    // relevancy context there is: "relevant to what I'm talking about right
+    // now". It rides along as state; omitted entirely when there is none.
+    const speech = (this.getSpeech() || "").trim();
     const state = {
       setting:
         "You are watching the live chat of a livestream. The streamer wants to know which messages deserve their personal attention while they perform.",
@@ -90,10 +96,14 @@ class Judge {
         text: m.text,
       })),
     };
+    if (speech) state.streamer_speech = speech;
+    const contextRefs = speech
+      ? "`stream_context`, `streamer_speech` (what the streamer has said out loud in the last minute), and `recent_chat`"
+      : "`stream_context` and `recent_chat`";
     const questions = {};
     batch.forEach((m, i) => {
       questions[`m${i}_relevance`] = score(
-        `Considering \`stream_context\` and \`recent_chat\`, how much does chat message \`messages[${i}]\` deserve the streamer's personal attention right now?`,
+        `Considering ${contextRefs}, how much does chat message \`messages[${i}]\` deserve the streamer's personal attention right now?`,
         RELEVANCE_LEVELS
       );
       questions[`m${i}_factual`] = score(

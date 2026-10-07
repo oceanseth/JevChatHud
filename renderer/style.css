@@ -34,7 +34,48 @@ body { display: flex; flex-direction: column; }
   backdrop-filter: blur(20px) saturate(1.25);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
+  position: relative;
 }
+
+/* The Jev Judge coin: centered in the header, overhanging below it. Eyes open
+   and colored while filtering; greyscale with eyes closed while everything is
+   let through. The <video> swaps in over the still to play his voiceline. */
+#jev-toggle {
+  -webkit-app-region: no-drag;
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  z-index: 6;
+  border: 2px solid var(--accent);
+  background: #0e0e12;
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.55), 0 4px 14px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+#jev-toggle img, #jev-toggle video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: filter 0.3s;
+  /* the portrait is a head-and-shoulders bust: zoom the coin onto the face */
+  transform: scale(1.6);
+  transform-origin: 50% 22%;
+}
+#jev-toggle video.hidden { display: none; }
+#jev-toggle.off { border-color: var(--border); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }
+#jev-toggle.off img { filter: grayscale(1) brightness(0.6); }
+#jev-toggle:hover { border-color: var(--accent); }
+
+/* Mic toggle: lit while listening, greyscale when off */
+#mic-btn img { filter: grayscale(1) brightness(0.55); }
+#mic-btn.active img { filter: none; }
+#mic-btn.active img { filter: drop-shadow(0 0 7px rgba(124, 92, 255, 0.95)); }
 #topbar select, #topbar button { -webkit-app-region: no-drag; }
 #logo { width: 22px; height: 22px; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)); }
 .spacer { flex: 1; }
@@ -85,27 +126,30 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.danger:hover { border-color: var(--red); color: var(--red); }
 button.active { color: var(--accent); border-color: var(--accent); }
 
+/* Two half-width sliders flank the Jev coin's overhang (#controls-gap).
+   Both rows disappear entirely while the Judge's eyes are closed. */
 #controls {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 12px;
+  padding: 10px 12px 6px;
   background: rgba(12, 12, 19, 0.5);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
-#relevancy-label {
+#controls-gap { width: 68px; flex-shrink: 0; }
+.metric-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
+  min-width: 0;
   color: var(--text-dim);
+  font-size: 12px;
 }
-#relevancy { flex: 1; accent-color: var(--accent); }
-#relevancy-value { min-width: 3ch; color: var(--text); font-variant-numeric: tabular-nums; }
-#see-all-label,
-#facts-only-label { color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
-#facts-only-label.inactive { opacity: 0.45; }
+.metric-label input[type="range"] { flex: 1; min-width: 40px; accent-color: var(--accent); }
+.metric-value { min-width: 3ch; color: var(--text); font-variant-numeric: tabular-nums; }
+.metric-label.inactive { opacity: 0.45; }
+body.jev-off #controls, body.jev-off #tagbar { display: none; }
 
 /* Tag filter bar: per-kind chips with live counts. Selecting any tag switches
    the feed from relevancy-threshold mode to kind mode (>50% confidence). */
@@ -117,9 +161,7 @@ button.active { color: var(--accent); border-color: var(--accent); }
   background: rgba(12, 12, 19, 0.5);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
-  transition: opacity 0.15s;
 }
-#tagbar.inactive { opacity: 0.45; }
 #tag-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
 .tag-chip {
   display: inline-flex;
@@ -162,7 +204,22 @@ button.active { color: var(--accent); border-color: var(--accent); }
 .kind-chatter { --kc: #9a9ab0; }
 .kind-toxic { --kc: #ff8f5c; }
 
-#relevancy-label.inactive { opacity: 0.45; }
+/* Mic test level meter in settings */
+#mic-level {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+#mic-level-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--green), var(--yellow));
+  transition: width 0.08s linear;
+}
 
 #status-row {
   display: flex;

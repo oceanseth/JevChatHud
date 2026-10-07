@@ -31,28 +31,39 @@ session: 45 messages judged for $0.0013.*
   per message two Scores (four attention levels → relevancy 0–100, and four
   factuality levels → factual 0–100) and one Choice
   (question / stream issue / feedback / personal / hype / chatter / toxic).
-- The **relevancy slider** (0–100) filters the feed against Jev's scores in
-  realtime — thresholds live in code/UI, not the model, so sliding it never
-  re-runs inference. **See all** bypasses curation entirely.
-- **Facts only** swaps the dimension the slider thresholds: instead of
-  attention-worthiness it curates on Jev's factuality score — does the message
-  *assert something verifiable* (a checkable claim about the game, the stream,
-  the world) rather than express an opinion, reaction, or hype? The rubric
-  follows the fact-vs-opinion literature
+- **Two sliders, one verdict.** The **relevancy** slider (0–100) curates on
+  attention-worthiness; the **factual** slider curates on Jev's factuality
+  score — does the message *assert something verifiable* (a checkable claim
+  about the game, the stream, the world) rather than express an opinion,
+  reaction, or hype? The factual rubric follows the fact-vs-opinion literature
   ([ClaimBuster](https://arxiv.org/abs/2004.14425)'s non-factual / unimportant
   factual / check-worthy taxonomy): pure opinion → unverifiable speculation →
-  personal-experience fact → publicly verifiable claim. It scores *checkability,
-  not truth*. Both dimensions are judged per message in the same request
+  personal-experience fact → publicly verifiable claim. It scores
+  *checkability, not truth*. The thresholds **AND** together and a slider at 0
+  is no constraint — so relevancy-only, factual-only ("facts only"), and
+  "on-topic AND verifiable" are all just positions of the two sliders. Both
+  dimensions are judged per message in the same request
   ([composite scoring](https://docs.typesafe.ai/patterns/composite-scoring)),
-  so toggling the checkbox re-curates every already-judged message instantly —
-  no re-inference, no extra cost.
+  so sliding either one re-curates every already-judged message instantly —
+  thresholds live in code/UI, not the model; no re-inference, no extra cost.
+  While both sliders are active, each message's score chip shows the *binding*
+  dimension — the score with the least headroom above its slider, prefixed
+  `r`/`f` — and the tooltip always carries both.
+- **The Jev Judge toggle.** The robed coin in the center of the header is the
+  master switch. Eyes open and in color: Jev is filtering your chat ("*Jev,
+  now filtering your chat*"). Click him and he closes his eyes, drops to
+  greyscale, announces "*Letting all messages through*", and every filter row
+  disappears — the raw firehose, nothing hidden, unjudged messages included.
+  Judging continues in the background either way, so reopening his eyes
+  restores a fully-curated feed instantly. The voicelines are the avatar
+  itself speaking ([masky.ai](https://masky.ai) render, played in the coin).
 - The **tag bar** filters by message kind instead: click any combination of
   kind chips (each shows a live count) to see only messages Jev tagged with
   one of those kinds at >50% confidence — `all` / `none` bulk-toggle. While
   tags are selected the relevancy slider is ignored, deliberately: kinds like
   *toxic* or *chatter* score near-zero relevancy by design and would otherwise
   never surface for a moderator reviewing them. Clearing all tags returns to
-  the relevancy view; clicking a tag while in "see all" drops back to curation.
+  the slider view.
 
 <p align="center">
   <img src="docs/screenshots/tags.png" width="420" alt="Tag filter: question + stream issue + feedback selected" />
@@ -61,6 +72,42 @@ session: 45 messages judged for $0.0013.*
 *Tag filtering on the same live chat: with `question`, `stream issue`, and
 `feedback` checked, only messages Jev classified as one of those kinds remain —
 including a 26-relevancy "bro??" question the slider would have hidden.*
+
+<p align="center">
+  <img src="docs/screenshots/jev-dual.png" width="420" alt="Dual sliders: relevancy 30 AND factual 55 on a live chat" />
+  <img src="docs/screenshots/jev-off.png" width="420" alt="Jev's eyes closed: the raw firehose, filters hidden" />
+</p>
+
+*Left: both sliders active on a live 25k-viewer chat — the surviving messages
+passed relevancy ≥30 AND factual ≥55, chips showing the binding dimension
+(`f72` on "its slow", a verifiable stream report). Right: the Judge's eyes are
+closed — greyscale coin, no filter rows, every message flowing through.*
+
+## Judging against your voice
+
+Chat reacts to what you're *saying*. With the **mic toggle** (🎙 next to the
+Judge) lit, the HUD listens to your microphone, transcribes it **locally**
+with [whisper.cpp](https://github.com/ggml-org/whisper.cpp) in ~5s chunks, and
+hands Jev a rolling last-minute transcript as `streamer_speech` context — so
+"relevant" means *relevant to what the streamer is talking about right now*.
+A question about the boss you just mentioned outranks one about last week's
+stream, and the ~10s broadcast delay chat reacts behind is absorbed by the
+60-second window.
+
+- **Nothing leaves the machine**: audio is captured in the renderer, chunked,
+  gated for silence, and transcribed by a local `whisper-cli` process. Only
+  the resulting text rides along inside the judging request.
+- **Settings → Microphone** picks the input device and has a **test mic**
+  button: records ~3s with a live level meter, runs it through the exact same
+  pipeline, and shows you what Jev heard.
+- Requires `whisper-cli` (`brew install whisper-cpp`) and a ggml model
+  (`ggml-small.en.bin` in `~/.cache/whisper/`, among other autodetected
+  locations); `mic.whisperBin` / `mic.whisperModel` in `config.json` override.
+  The mic status in the footer tells you if either is missing.
+
+<p align="center">
+  <img src="docs/screenshots/settings-mic.png" width="420" alt="Settings: microphone device picker and test" />
+</p>
 
 ## User profiling
 

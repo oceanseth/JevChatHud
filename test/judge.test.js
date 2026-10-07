@@ -38,6 +38,18 @@ test("buildRequest asks two Scores and one Choice per message", () => {
   // instructions reference the right state path
   assert.match(questions.m1_relevance.instructions, /`messages\[1\]`/);
   assert.match(questions.m1_factual.instructions, /`messages\[1\]`/);
+  // no mic transcript → no streamer_speech in state or instructions
+  assert.ok(!("streamer_speech" in state));
+  assert.doesNotMatch(questions.m0_relevance.instructions, /streamer_speech/);
+});
+
+test("buildRequest carries recent streamer speech as relevancy context", () => {
+  const judge = makeJudge({ getSpeech: () => "okay chat I'm going for the no-hit boss run now" });
+  const { state, questions } = judge.buildRequest([msg("a", "you got this!")]);
+  assert.equal(state.streamer_speech, "okay chat I'm going for the no-hit boss run now");
+  assert.match(questions.m0_relevance.instructions, /`streamer_speech`/);
+  // factual rubric judges the message alone — speech context stays out of it
+  assert.doesNotMatch(questions.m0_factual.instructions, /streamer_speech/);
 });
 
 test("judgeBatch maps answers back to message ids and normalizes score", async () => {

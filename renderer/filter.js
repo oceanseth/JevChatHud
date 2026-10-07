@@ -1,31 +1,32 @@
 // Feed visibility policy, kept pure so tests can exercise it without a DOM.
 // Precedence:
-//   1. "see all"      → raw feed, nothing hidden.
+//   1. Jev filtering off (the Judge's eyes are closed) → raw feed, nothing
+//      hidden. The filter rows are hidden in the UI while this is the case.
 //   2. tags selected  → only messages Jev tagged with a selected kind at >50%
-//                       confidence. The relevancy slider is intentionally
-//                       ignored here: kinds like toxic or chatter score near-0
+//                       confidence. The sliders are intentionally ignored
+//                       here: kinds like toxic or chatter score near-0
 //                       relevancy by design and would otherwise never surface.
-//   3. otherwise      → slider metric >= threshold (the curated view). The
-//                       metric is relevancy, or Jev's factuality score when
-//                       "facts only" is checked — the checkbox swaps what the
-//                       slider measures, it never re-judges anything.
-// Unjudged messages only appear in "see all".
+//   3. otherwise      → both slider thresholds must pass (they AND together).
+//                       A slider at 0 is no constraint, so relevancy-only and
+//                       factual-only curation are both just positions of the
+//                       two sliders. Thresholding never re-judges anything.
+// Unjudged messages only appear when filtering is off. Judgments from a build
+// before the factual score exist fail any factual threshold > 0.
 const KIND_CONFIDENCE_MIN = 0.5;
 
 // Mirrors KIND_CRITERIA in src/judge.js (asserted equal in tests), ordered by
 // how urgently a moderator typically needs each kind.
 const KINDS = ["stream_issue", "question", "feedback", "personal", "hype", "chatter", "toxic"];
 
-function messageVisible(judgment, { seeAll, kinds, threshold, factsOnly }) {
-  if (seeAll) return true;
+function messageVisible(judgment, { filtering = true, kinds, relevancyMin = 0, factualMin = 0 }) {
+  if (!filtering) return true;
   if (!judgment) return false;
   if (kinds && kinds.length) {
     return kinds.includes(judgment.kind) && judgment.kindConfidence > KIND_CONFIDENCE_MIN;
   }
-  // Judgments from a build without the factual score have no factuality;
-  // in facts-only mode they behave like unjudged messages.
-  const metric = factsOnly ? judgment.factuality : judgment.relevancy;
-  return metric != null && metric >= threshold;
+  if (judgment.relevancy < relevancyMin) return false;
+  if (factualMin > 0 && !(judgment.factuality != null && judgment.factuality >= factualMin)) return false;
+  return true;
 }
 
 if (typeof module !== "undefined" && module.exports) {

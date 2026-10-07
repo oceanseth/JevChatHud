@@ -5,14 +5,17 @@ const feed = document.getElementById("feed");
 const profileSelect = document.getElementById("profile-select");
 const relevancySlider = document.getElementById("relevancy");
 const relevancyValue = document.getElementById("relevancy-value");
-const seeAllCheck = document.getElementById("see-all");
-const factsOnlyCheck = document.getElementById("facts-only");
-const metricName = document.getElementById("metric-name");
+const factualSlider = document.getElementById("factual");
+const factualValue = document.getElementById("factual-value");
+const jevToggle = document.getElementById("jev-toggle");
+const jevFace = document.getElementById("jev-face");
+const jevVideo = document.getElementById("jev-video");
+const micBtn = document.getElementById("mic-btn");
+const micStatusEl = document.getElementById("mic-status");
 const statusRow = document.getElementById("status-row");
 const statsEl = document.getElementById("stats");
 const judgeErrorEl = document.getElementById("judge-error");
 const pinBtn = document.getElementById("pin-btn");
-const tagbar = document.getElementById("tagbar");
 const tagChipsEl = document.getElementById("tag-chips");
 const emptyState = document.getElementById("empty-state");
 const emptyTitle = document.getElementById("empty-title");
@@ -40,10 +43,10 @@ function relClass(rel) {
 
 function applyFilter(row) {
   const visible = messageVisible(row._judgment, {
-    seeAll: seeAllCheck.checked,
+    filtering: jevFiltering,
     kinds: [...selectedKinds],
-    threshold: Number(relevancySlider.value),
-    factsOnly: factsOnlyCheck.checked,
+    relevancyMin: Number(relevancySlider.value),
+    factualMin: Number(factualSlider.value),
   });
   row.classList.toggle("hidden-by-filter", !visible);
   if (visible) checkClamp(row);
@@ -132,26 +135,36 @@ function addMessage(msg) {
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
-// The score chip shows whichever dimension the HUD is currently curating on:
-// Jev's attention relevancy, or its factuality score in facts-only mode. The
-// tooltip always carries both so toggling the checkbox explains itself.
+// With only the relevancy slider in play the chip is a bare relevancy score.
+// Once the factual slider is active the chip shows the BINDING dimension —
+// the score with the least headroom above its slider, i.e. the number that
+// explains why this row is in or out — letter-prefixed (r57 / f92) so the two
+// dimensions can't be confused. The tooltip always carries both.
 function renderScoreChip(row) {
   const j = row._judgment;
   if (!j) return;
-  const factsMode = factsOnlyCheck.checked;
-  const metric = factsMode ? j.factuality : j.relevancy;
-  if (metric == null) {
-    // judged before the factual dimension existed
-    row._relChip.textContent = "?";
-    row._relChip.className = "chip rel pending";
-    row._relChip.title = "no factuality score — judged by an older build";
-    return;
+  const factualMin = Number(factualSlider.value);
+  let text = String(j.relevancy);
+  let cls = relClass(j.relevancy);
+  if (factualMin > 0) {
+    const relMargin = j.relevancy - Number(relevancySlider.value);
+    // A legacy judgment with no factuality fails any factual threshold.
+    const factMargin = (j.factuality == null ? -101 : j.factuality) - factualMin;
+    if (factMargin < relMargin) {
+      text = j.factuality == null ? "f?" : `f${j.factuality}`;
+      cls = j.factuality == null ? "pending" : relClass(j.factuality);
+    } else {
+      text = `r${j.relevancy}`;
+    }
   }
-  row._relChip.textContent = metric;
-  row._relChip.className = `chip rel ${relClass(metric)}`;
+  row._relChip.textContent = text;
+  row._relChip.className = `chip rel ${cls}`;
   const rel = `relevancy ${j.relevancy}/100 (confidence ${j.relevanceConfidence.toFixed(2)})`;
-  const fact = j.factuality == null ? "" : `factual ${j.factuality}/100 (confidence ${j.factualConfidence.toFixed(2)})`;
-  row._relChip.title = factsMode ? `${fact} · ${rel}` : fact ? `${rel} · ${fact}` : rel;
+  const fact =
+    j.factuality == null
+      ? "no factuality score — judged by an older build"
+      : `factual ${j.factuality}/100 (confidence ${j.factualConfidence.toFixed(2)})`;
+  row._relChip.title = `${rel} · ${fact}`;
 }
 
 function markJudged({ id, judgment }) {
@@ -344,23 +357,21 @@ function syncFilterControls() {
   for (const [kind, { chip }] of tagChips) {
     chip.classList.toggle("active", selectedKinds.has(kind));
   }
-  // Communicate precedence: tags replace the slider; "see all" bypasses both.
-  metricName.textContent = factsOnlyCheck.checked ? "factual" : "relevancy";
-  document.getElementById("relevancy-label").classList.toggle("inactive", tagsActive || seeAllCheck.checked);
-  document.getElementById("facts-only-label").classList.toggle("inactive", tagsActive || seeAllCheck.checked);
+  // Communicate precedence: tags replace the sliders. (When Jev's eyes are
+  // closed the whole filter stack is hidden, so no state to communicate.)
+  const tip = tagsActive ? "tag filter active — clear tags to use the sliders" : "";
+  for (const id of ["relevancy-label", "factual-label"]) {
+    document.getElementById(id).classList.toggle("inactive", tagsActive);
+  }
   relevancySlider.disabled = tagsActive;
-  relevancySlider.title = tagsActive ? "tag filter active — clear tags to use the relevancy slider" : "";
-  tagbar.classList.toggle("inactive", seeAllCheck.checked);
+  factualSlider.disabled = tagsActive;
+  relevancySlider.title = tip;
+  factualSlider.title = tip;
 }
 
 function setKinds(kinds) {
   selectedKinds.clear();
   for (const k of kinds) selectedKinds.add(k);
-  // Picking a tag means "curate for me" — drop out of the raw firehose view.
-  if (selectedKinds.size && seeAllCheck.checked) {
-    seeAllCheck.checked = false;
-    hud.updateSettings({ seeAll: false });
-  }
   hud.updateSettings({ kindFilter: [...selectedKinds] });
   syncFilterControls();
   refilterAll();
@@ -509,26 +520,266 @@ profileSelect.addEventListener("change", async () => {
   settings = await hud.getSettings();
 });
 
+// Moving either slider is pure display policy: re-threshold and re-render the
+// binding-dimension chips, no re-judging. Chips need re-rendering because the
+// binding dimension can flip as the margins change.
 relevancySlider.addEventListener("input", () => {
   relevancyValue.textContent = relevancySlider.value;
+  if (Number(factualSlider.value) > 0) for (const row of rows.values()) renderScoreChip(row);
   refilterAll();
 });
 relevancySlider.addEventListener("change", () => {
   hud.updateSettings({ relevancyThreshold: Number(relevancySlider.value) });
 });
-
-seeAllCheck.addEventListener("change", () => {
-  hud.updateSettings({ seeAll: seeAllCheck.checked });
-  syncFilterControls();
-  refilterAll();
-});
-
-factsOnlyCheck.addEventListener("change", () => {
-  hud.updateSettings({ factsOnly: factsOnlyCheck.checked });
-  syncFilterControls();
-  // Pure display policy: re-render chips and re-threshold, no re-judging.
+factualSlider.addEventListener("input", () => {
+  factualValue.textContent = factualSlider.value;
   for (const row of rows.values()) renderScoreChip(row);
   refilterAll();
+});
+factualSlider.addEventListener("change", () => {
+  hud.updateSettings({ factualThreshold: Number(factualSlider.value) });
+});
+
+// ---------- the Jev Judge toggle ----------
+
+let jevFiltering = true;
+let jevPlayToken = 0; // invalidates a playing voiceline if the coin is re-clicked
+
+function playJevVoiceline(on) {
+  const token = ++jevPlayToken;
+  jevVideo.src = on ? "assets/jev-on.mp4" : "assets/jev-off.mp4";
+  jevVideo.classList.remove("hidden");
+  const done = () => {
+    if (token !== jevPlayToken) return;
+    jevPlayToken++; // one settle per playback
+    jevVideo.pause();
+    jevVideo.classList.add("hidden");
+    jevVideo.removeAttribute("src");
+    jevVideo.load();
+  };
+  jevVideo.onended = done;
+  jevVideo.onerror = done;
+  // Settle even if `ended` never fires (no/stuck audio output device freezes
+  // the media clock): both voicelines are ~3-4s, cap at 6.
+  setTimeout(done, 6000);
+  jevVideo.play().catch(done);
+}
+
+function setJevFiltering(on, { animate = true, persist = true } = {}) {
+  jevFiltering = on;
+  document.body.classList.toggle("jev-off", !on);
+  jevToggle.classList.toggle("off", !on);
+  jevToggle.title = on
+    ? "Jev is filtering your chat — click to let all messages through"
+    : "Letting all messages through — click and Jev filters your chat";
+  jevFace.src = on ? "assets/jev-judge-open.png" : "assets/jev-judge-closed.png";
+  if (persist) hud.updateSettings({ jevFiltering: on });
+  syncFilterControls();
+  refilterAll();
+  if (animate) playJevVoiceline(on);
+}
+
+jevToggle.addEventListener("click", () => setJevFiltering(!jevFiltering));
+
+// ---------- streamer mic → local STT context ----------
+// Capture runs here (getUserMedia); 16kHz mono Float32 chunks ship to the main
+// process where a local whisper.cpp binary transcribes them. The judge reads
+// the rolling transcript as `streamer_speech`. Audio never leaves the machine.
+
+const STT_CHUNK_SECONDS = 5;
+const MIC_RMS_GATE = 0.004; // skip silent chunks: no voice energy, no whisper run
+
+let micListening = false;
+let micStream = null;
+let micCtx = null;
+let micNode = null;
+let micChunks = [];
+let micChunkLen = 0;
+
+function setMicStatus(text, isError = false) {
+  micStatusEl.textContent = text;
+  micStatusEl.classList.toggle("error", isError);
+}
+
+function chunkRms(data) {
+  let s = 0;
+  for (let i = 0; i < data.length; i++) s += data[i] * data[i];
+  return Math.sqrt(s / (data.length || 1));
+}
+
+function drainMicBuffer() {
+  const all = new Float32Array(micChunkLen);
+  let o = 0;
+  for (const b of micChunks) {
+    all.set(b, o);
+    o += b.length;
+  }
+  micChunks = [];
+  micChunkLen = 0;
+  return all;
+}
+
+async function flushMicChunk() {
+  const all = drainMicBuffer();
+  if (chunkRms(all) < MIC_RMS_GATE) return;
+  const res = await hud.sttChunk(all);
+  if (res?.error) setMicStatus(`🎙 ${res.error}`, true);
+  else if (micListening) setMicStatus("🎙 listening");
+}
+
+function stopMicCapture() {
+  micNode?.disconnect();
+  micCtx?.close();
+  micStream?.getTracks().forEach((t) => t.stop());
+  micNode = micCtx = micStream = null;
+  micChunks = [];
+  micChunkLen = 0;
+}
+
+async function startMicCapture(deviceId) {
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+  });
+  micCtx = new AudioContext({ sampleRate: 16000 });
+  const src = micCtx.createMediaStreamSource(micStream);
+  micNode = micCtx.createScriptProcessor(4096, 1, 1);
+  micNode.onaudioprocess = (e) => {
+    const data = e.inputBuffer.getChannelData(0);
+    micChunks.push(new Float32Array(data));
+    micChunkLen += data.length;
+    if (micChunkLen >= STT_CHUNK_SECONDS * micCtx.sampleRate) flushMicChunk();
+  };
+  src.connect(micNode);
+  micNode.connect(micCtx.destination); // keeps the processor pulled; outputs silence
+}
+
+async function setMicListening(on, { persist = true } = {}) {
+  if (on === micListening) {
+    // still reflect persisted intent in the UI on init
+    micBtn.classList.toggle("active", micListening);
+    return;
+  }
+  if (on) {
+    try {
+      const st = await hud.sttStatus();
+      if (!st.ok) throw new Error(st.error);
+      const allowed = await hud.requestMicAccess();
+      if (!allowed) throw new Error("microphone access denied (System Settings → Privacy)");
+      await startMicCapture(settings.mic?.deviceId || "");
+      micListening = true;
+      setMicStatus("🎙 listening");
+    } catch (err) {
+      stopMicCapture();
+      micListening = false;
+      setMicStatus(`🎙 ${err.message || err}`, true);
+    }
+  } else {
+    stopMicCapture();
+    micListening = false;
+    setMicStatus("");
+  }
+  micBtn.classList.toggle("active", micListening);
+  settings.mic = { ...(settings.mic || {}), enabled: micListening };
+  if (persist) settings = await hud.updateSettings({ mic: settings.mic });
+}
+
+micBtn.addEventListener("click", () => setMicListening(!micListening));
+
+// Mic device picker + test, in the settings panel.
+const micDeviceSelect = document.getElementById("mic-device");
+const micTestBtn = document.getElementById("mic-test-btn");
+const micLevelFill = document.getElementById("mic-level-fill");
+const micTestResult = document.getElementById("mic-test-result");
+
+async function populateMicDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  micDeviceSelect.replaceChildren();
+  const def = document.createElement("option");
+  def.value = "";
+  def.textContent = "system default";
+  micDeviceSelect.append(def);
+  let i = 0;
+  for (const d of devices) {
+    if (d.kind !== "audioinput" || !d.deviceId) continue;
+    i++;
+    const opt = document.createElement("option");
+    opt.value = d.deviceId;
+    // Labels are empty until mic permission has been granted once.
+    opt.textContent = d.label || `microphone ${i}`;
+    micDeviceSelect.append(opt);
+  }
+  micDeviceSelect.value = settings.mic?.deviceId || "";
+  if (micDeviceSelect.selectedIndex === -1) micDeviceSelect.value = ""; // saved device unplugged
+}
+
+micDeviceSelect.addEventListener("change", async () => {
+  const label = micDeviceSelect.value ? micDeviceSelect.selectedOptions[0]?.textContent || "" : "";
+  settings = await hud.updateSettings({
+    mic: { ...(settings.mic || {}), deviceId: micDeviceSelect.value, label },
+  });
+  if (micListening) {
+    // live-switch the capture to the new device
+    await setMicListening(false, { persist: false });
+    await setMicListening(true, { persist: false });
+  }
+});
+
+// Record ~3s off the picked device with a live level meter, transcribe through
+// the exact same pipeline, and show what whisper heard.
+micTestBtn.addEventListener("click", async () => {
+  if (micTestBtn.disabled) return;
+  micTestBtn.disabled = true;
+  micTestResult.textContent = "";
+  let stream = null;
+  let ctx = null;
+  try {
+    const st = await hud.sttStatus();
+    if (!st.ok) throw new Error(st.error);
+    const allowed = await hud.requestMicAccess();
+    if (!allowed) throw new Error("microphone access denied (System Settings → Privacy)");
+    const deviceId = micDeviceSelect.value;
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+    });
+    await populateMicDevices(); // device labels resolve once permission is granted
+    ctx = new AudioContext({ sampleRate: 16000 });
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const parts = [];
+    proc.onaudioprocess = (e) => {
+      const data = new Float32Array(e.inputBuffer.getChannelData(0));
+      parts.push(data);
+      micLevelFill.style.width = `${Math.min(100, chunkRms(data) * 900)}%`;
+    };
+    src.connect(proc);
+    proc.connect(ctx.destination);
+    micTestBtn.textContent = "listening…";
+    await new Promise((r) => setTimeout(r, 3200));
+    proc.disconnect();
+    let len = 0;
+    for (const p of parts) len += p.length;
+    const all = new Float32Array(len);
+    let o = 0;
+    for (const p of parts) {
+      all.set(p, o);
+      o += p.length;
+    }
+    micTestBtn.textContent = "transcribing…";
+    const res = await hud.sttTest(all);
+    micTestResult.textContent = res.error
+      ? `✗ ${res.error}`
+      : res.text
+        ? `Jev heard: “${res.text}”`
+        : "✗ heard nothing — try speaking during the test";
+  } catch (err) {
+    micTestResult.textContent = `✗ ${err.message || err}`;
+  } finally {
+    stream?.getTracks().forEach((t) => t.stop());
+    ctx?.close();
+    micLevelFill.style.width = "0";
+    micTestBtn.textContent = "test mic";
+    micTestBtn.disabled = false;
+  }
 });
 
 pinBtn.addEventListener("click", async () => {
@@ -667,6 +918,8 @@ function openSettingsPanel({ focusSources = false } = {}) {
   sizeSlider.value = a.fontSize || 13;
   sizeValue.textContent = sizeSlider.value;
   timestampsCheck.checked = !!a.timestamps;
+  populateMicDevices();
+  micTestResult.textContent = "";
   const active = settings.profiles.find((p) => p.id === settings.activeProfileId);
   renderEditProfileSelect(active?.id || "");
   loadProfileIntoEditor(active || null);
@@ -738,8 +991,9 @@ hud.onOpenSettings(() => openSettingsPanel());
   settings = await hud.getSettings();
   relevancySlider.value = settings.relevancyThreshold;
   relevancyValue.textContent = settings.relevancyThreshold;
-  seeAllCheck.checked = settings.seeAll;
-  factsOnlyCheck.checked = !!settings.factsOnly;
+  factualSlider.value = settings.factualThreshold || 0;
+  factualValue.textContent = factualSlider.value;
+  setJevFiltering(settings.jevFiltering !== false, { animate: false, persist: false });
   pinBtn.classList.toggle("active", settings.alwaysOnTop);
   buildTagBar();
   for (const k of settings.kindFilter || []) if (KINDS.includes(k)) selectedKinds.add(k);
@@ -747,4 +1001,9 @@ hud.onOpenSettings(() => openSettingsPanel());
   applyAppearance(settings.appearance || {});
   renderProfileSelect();
   updateEmptyState();
+  // Resume listening if the mic was on when the app last closed.
+  if (settings.mic?.enabled) {
+    micListening = false;
+    await setMicListening(true, { persist: false });
+  }
 })();

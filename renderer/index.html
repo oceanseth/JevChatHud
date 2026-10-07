@@ -13,6 +13,16 @@
       <option value="">no profile</option>
     </select>
     <div class="spacer"></div>
+    <!-- The Judge himself: eyes open & colored = filtering, eyes closed &
+         greyscale = letting everything through. Clicking plays his voiceline
+         video in the coin, then settles to the matching still. -->
+    <button id="jev-toggle" title="Jev is filtering your chat — click to let all messages through">
+      <img id="jev-face" src="assets/jev-judge-open.png" alt="Jev Judge" />
+      <video id="jev-video" class="hidden" playsinline></video>
+    </button>
+    <button id="mic-btn" class="icon-btn" title="Listen to your microphone so Jev can judge chat against what you're saying">
+      <img src="assets/icon-mic.png" alt="mic" />
+    </button>
     <button id="add-source-shortcut" class="icon-btn" title="Add a chat source">
       <img src="assets/icon-plus.png" alt="" /><span>source</span>
     </button>
@@ -24,16 +34,17 @@
     </button>
   </header>
 
+  <!-- Dual thresholds AND together; a slider at 0 is no constraint. The Jev
+       Judge coin overhangs the gap between them. -->
   <div id="controls">
-    <label id="relevancy-label">
-      <span id="metric-name">relevancy</span> <span id="relevancy-value">55</span>
+    <label class="metric-label" id="relevancy-label" title="Hide messages below this attention-relevancy score. 0 = no constraint.">
+      <span class="metric-name">relevancy</span> <span id="relevancy-value" class="metric-value">55</span>
       <input type="range" id="relevancy" min="0" max="100" value="55" />
     </label>
-    <label id="facts-only-label" title="Judge against fact vs opinion: the slider thresholds Jev's factuality score (does the message state something verifiable?) instead of attention relevancy.">
-      <input type="checkbox" id="facts-only" /> facts only
-    </label>
-    <label id="see-all-label">
-      <input type="checkbox" id="see-all" /> see all
+    <span id="controls-gap"></span>
+    <label class="metric-label" id="factual-label" title="Hide messages below this factuality score (does the message assert something verifiable, fact vs opinion?). 0 = no constraint.">
+      <span class="metric-name">factual</span> <span id="factual-value" class="metric-value">0</span>
+      <input type="range" id="factual" min="0" max="100" value="0" />
     </label>
   </div>
 
@@ -59,6 +70,7 @@
 
   <footer id="statusbar">
     <span id="stats">no messages yet</span>
+    <span id="mic-status"></span>
     <span id="judge-error" class="error"></span>
   </footer>
 
@@ -98,6 +110,18 @@
       <label id="appearance-timestamps-label">
         <input type="checkbox" id="appearance-timestamps" /> show message timestamps
       </label>
+
+      <h2>Microphone</h2>
+      <div class="section-note block">When the mic is on, your recent speech is transcribed locally (never uploaded)
+        and given to Jev as context — "relevant to what the streamer is saying right now".</div>
+      <label class="field">Input device
+        <select id="mic-device"></select>
+      </label>
+      <div class="row">
+        <button id="mic-test-btn">test mic</button>
+        <div id="mic-level"><div id="mic-level-fill"></div></div>
+      </div>
+      <div id="mic-test-result" class="section-note block"></div>
 
       <h2>Profiles</h2>
       <div class="row">

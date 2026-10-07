@@ -7,10 +7,15 @@ const crypto = require("crypto");
 const DEFAULTS = {
   typesafeApiKey: "",
   model: "jev-latest",
+  jevFiltering: true, // the Jev Judge toggle; false = raw firehose, filters hidden
   relevancyThreshold: 55, // 0-100; messages scoring below are hidden in curated view
-  kindFilter: [], // selected message kinds; non-empty replaces the relevancy filter
-  factsOnly: false, // slider thresholds Jev's factuality score instead of relevancy
-  seeAll: false,
+  factualThreshold: 0, // 0-100 over Jev's factuality score; 0 = no constraint
+  kindFilter: [], // selected message kinds; non-empty replaces the slider filters
+  mic: {
+    enabled: false, // listen to the streamer's mic for judging context
+    deviceId: "", // renderer mediaDevices deviceId; "" = system default
+    label: "", // display label of the picked device (deviceIds are opaque)
+  },
   appearance: {
     fontFamily: "system", // key into the renderer's font map
     fontSize: 13, // px, chat feed only
@@ -30,6 +35,18 @@ class Settings {
       const raw = JSON.parse(fs.readFileSync(this.file, "utf8"));
       this.data = { ...DEFAULTS, ...raw };
       this.data.appearance = { ...DEFAULTS.appearance, ...(raw.appearance || {}) };
+      this.data.mic = { ...DEFAULTS.mic, ...(raw.mic || {}) };
+      // v0.5 → v0.6: "see all" became the Jev Judge toggle (inverted), and the
+      // "facts only" checkbox became the factual slider. factsOnly meant "the
+      // one slider thresholds factuality", which is exactly factual=old
+      // threshold, relevancy=0 in the dual-slider model.
+      if (!("jevFiltering" in raw) && "seeAll" in raw) this.data.jevFiltering = !raw.seeAll;
+      if (!("factualThreshold" in raw) && raw.factsOnly) {
+        this.data.factualThreshold = this.data.relevancyThreshold;
+        this.data.relevancyThreshold = 0;
+      }
+      delete this.data.seeAll;
+      delete this.data.factsOnly;
     } catch {
       // first run or unreadable file: start from defaults
     }
