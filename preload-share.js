@@ -10,6 +10,8 @@ function on(channel) {
 
 contextBridge.exposeInMainWorld("share", {
   done: () => ipcRenderer.send("share:done"),
+  arrangeDone: () => ipcRenderer.send("share:arrange-done"),
+  setSize: (width, height) => ipcRenderer.send("share:set-size", { width, height }),
   onPlay: on("share:play"),
   onArrange: on("share:arrange"),
   onChroma: on("share:chroma"),
