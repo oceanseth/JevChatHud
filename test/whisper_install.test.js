@@ -40,7 +40,9 @@ test("resolve: config overrides beat autodetection", () => {
 test("resolve finds a downloaded model in ~/.cache/jevchathud", () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "jevhud-home-"));
   const saved = process.env.HOME;
-  process.env.HOME = fakeHome; // os.homedir() reads HOME on posix
+  const savedProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome; // os.homedir() reads HOME on posix…
+  process.env.USERPROFILE = fakeHome; // …and USERPROFILE on Windows
   try {
     const dir = path.join(fakeHome, ".cache", "jevchathud");
     fs.mkdirSync(dir, { recursive: true });
@@ -49,6 +51,8 @@ test("resolve finds a downloaded model in ~/.cache/jevchathud", () => {
     assert.equal(r.whisperModel, path.join(dir, "ggml-base.en.bin"));
   } finally {
     process.env.HOME = saved;
+    if (savedProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedProfile;
     fs.rmSync(fakeHome, { recursive: true, force: true });
   }
 });

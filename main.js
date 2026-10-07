@@ -243,6 +243,29 @@ app.whenReady().then(() => {
 
   // "Jev speaks" share window + Masky account plumbing.
   const maskyClient = new MaskyClient();
+  // Backfill the connected identity for tokens stored before the avatar
+  // picture existed in settings (OAuth-sourced tokens resolve via userinfo).
+  {
+    const sp = settings.get().speaker;
+    if (sp.maskyToken && !sp.maskyAccountPicture) {
+      maskyClient.userinfo(sp.maskyToken).then((who) => {
+        if (!who || (!who.name && !who.picture)) return;
+        const cur = settings.get().speaker;
+        if (!cur.maskyToken) return; // logged out in the meantime
+        settings.update({
+          speaker: {
+            ...cur,
+            maskyAccountName: who.name || cur.maskyAccountName,
+            maskyAccountPicture: who.picture || "",
+          },
+        });
+        send("speaker:identity", {
+          maskyAccountName: settings.get().speaker.maskyAccountName,
+          maskyAccountPicture: settings.get().speaker.maskyAccountPicture,
+        });
+      });
+    }
+  }
   ipcMain.handle("speaker:update", (_e, patch) => {
     settings.update({ speaker: { ...settings.get().speaker, ...patch } });
     syncSpeaker();
@@ -255,6 +278,7 @@ app.whenReady().then(() => {
         ...settings.get().speaker,
         maskyToken: accessToken,
         maskyAccountName: avatar?.name || "",
+        maskyAccountPicture: avatar?.picture || "",
       },
     });
     syncSpeaker();
@@ -265,10 +289,33 @@ app.whenReady().then(() => {
     // A pasted token is verified by listing the account's avatars — cheap,
     // read-only, and proves both auth and the avatars:read/generate grant.
     const avatars = await maskyClient.listAvatars(token);
-    settings.update({ speaker: { ...settings.get().speaker, maskyToken: token } });
+    // OAuth-issued tokens resolve to an identity (name + picture); raw
+    // pasted keys don't, and that's fine — the UI degrades to a plain label.
+    const who = await maskyClient.userinfo(token);
+    settings.update({
+      speaker: {
+        ...settings.get().speaker,
+        maskyToken: token,
+        maskyAccountName: who?.name || "",
+        maskyAccountPicture: who?.picture || "",
+      },
+    });
     syncSpeaker();
     speaker.refreshBalance();
     return { connected: true, avatars };
+  });
+  ipcMain.handle("speaker:logout", () => {
+    settings.update({
+      speaker: {
+        ...settings.get().speaker,
+        maskyToken: "",
+        maskyAccountName: "",
+        maskyAccountPicture: "",
+      },
+    });
+    speaker.balance = null; // a new login must not inherit the old account's balance
+    syncSpeaker(); // no token -> stops the schedule and closes the share window
+    return settings.get().speaker;
   });
   ipcMain.handle("speaker:avatars", async () => {
     const token = settings.get().speaker.maskyToken;

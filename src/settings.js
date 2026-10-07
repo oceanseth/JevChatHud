@@ -23,6 +23,7 @@ const DEFAULTS = {
     intervalMin: 1, // minutes between readings: 1 | 5 | 10
     maskyToken: "", // user's mky_ key (pasted or issued by Login with Masky)
     maskyAccountName: "", // display label of the connected identity
+    maskyAccountPicture: "", // avatar image URL of the connected identity
     avatarOwnerUserId: "twitch:11867613", // Jev Judge's creator (default avatar)
     avatarId: "Ev1WizD5smJnxHWJXEHZ", // the Jev Judge avatar
     useOwnAvatar: false, // advanced: render one of the user's own avatars

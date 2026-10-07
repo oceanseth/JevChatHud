@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' https:" />
   <title>JevChatHud</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -169,13 +169,19 @@
         </select>
       </div>
       <div id="speaker-setup" class="hidden">
-        <div class="row">
+        <div class="row" id="masky-connect-row">
           <button id="masky-login-btn" class="primary">Connect Masky account</button>
           <span id="masky-status" class="section-note">not connected</span>
         </div>
-        <label class="field">or paste a Masky API token
+        <label class="field" id="masky-token-field">or paste a Masky API token
           <input type="password" id="masky-token" placeholder="mky_..." />
         </label>
+        <div class="row hidden" id="masky-connected-row">
+          <span id="masky-connected-label">Masky Connected</span>
+          <img id="masky-avatar-img" class="masky-avatar hidden" alt="" />
+          <span id="masky-connected-name" class="masky-connected-name"></span>
+          <button id="masky-logout-btn">logout</button>
+        </div>
         <div id="speaker-balance" class="section-note block"></div>
         <label id="own-avatar-label" class="check-label">
           <input type="checkbox" id="speaker-own-avatar" /> use my own avatar instead of Jev Judge (advanced)

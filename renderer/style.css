@@ -582,3 +582,19 @@ button.linklike:hover { text-decoration: underline; border: none; }
 }
 .section-note { font-size: 10px; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
 .section-note.block { margin-top: 2px; line-height: 1.4; }
+
+/* Connected-Masky state: avatar + "Masky Connected: <name>" + logout */
+#masky-connect-row.hidden,
+#masky-token-field.hidden,
+#masky-connected-row.hidden,
+#masky-avatar-img.hidden { display: none; }
+#masky-connected-label { color: var(--text-dim); }
+.masky-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--accent);
+}
+.masky-connected-name { color: var(--text); font-weight: 600; }
+#masky-logout-btn { padding: 3px 8px; font-size: 11px; color: var(--text-dim); }

@@ -1131,6 +1131,13 @@ const speakerSetup = document.getElementById("speaker-setup");
 const maskyLoginBtn = document.getElementById("masky-login-btn");
 const maskyStatus = document.getElementById("masky-status");
 const maskyTokenInput = document.getElementById("masky-token");
+const maskyConnectRow = document.getElementById("masky-connect-row");
+const maskyTokenField = document.getElementById("masky-token-field");
+const maskyConnectedRow = document.getElementById("masky-connected-row");
+const maskyConnectedLabel = document.getElementById("masky-connected-label");
+const maskyConnectedName = document.getElementById("masky-connected-name");
+const maskyAvatarImg = document.getElementById("masky-avatar-img");
+const maskyLogoutBtn = document.getElementById("masky-logout-btn");
 const speakerBalance = document.getElementById("speaker-balance");
 const speakerOwnAvatar = document.getElementById("speaker-own-avatar");
 const ownAvatarRow = document.getElementById("own-avatar-row");
@@ -1151,16 +1158,37 @@ function renderSpeakerUI() {
   speakerEnabledCheck.checked = !!cfg.enabled;
   speakerInterval.value = String(cfg.intervalMin || 1);
   speakerSetup.classList.toggle("hidden", !cfg.enabled);
-  maskyStatus.textContent = cfg.maskyToken
-    ? `connected${cfg.maskyAccountName ? ` as ${cfg.maskyAccountName}` : ""}`
-    : "not connected";
-  maskyTokenInput.value = "";
-  maskyTokenInput.placeholder = cfg.maskyToken ? "token saved — paste to replace" : "mky_...";
+  renderMaskyAuth();
   speakerOwnAvatar.checked = !!cfg.useOwnAvatar;
   ownAvatarRow.classList.toggle("hidden", !cfg.useOwnAvatar);
   if (cfg.useOwnAvatar) populateOwnAvatars();
   speakerChroma.checked = !!cfg.chroma;
   speakerNote.textContent = "";
+}
+
+// Connected: avatar + "Masky Connected: <name>" + logout. Disconnected: the
+// connect button and the paste-a-token field.
+function renderMaskyAuth() {
+  const cfg = speakerCfg();
+  const connected = !!cfg.maskyToken;
+  maskyConnectRow.classList.toggle("hidden", connected);
+  maskyTokenField.classList.toggle("hidden", connected);
+  maskyConnectedRow.classList.toggle("hidden", !connected);
+  if (connected) {
+    maskyConnectedLabel.textContent = "Masky Connected:";
+    maskyConnectedName.textContent = cfg.maskyAccountName || "API token";
+    if (cfg.maskyAccountPicture) {
+      maskyAvatarImg.src = cfg.maskyAccountPicture;
+      maskyAvatarImg.classList.remove("hidden");
+    } else {
+      maskyAvatarImg.removeAttribute("src");
+      maskyAvatarImg.classList.add("hidden");
+    }
+  } else {
+    maskyStatus.textContent = "not connected";
+    maskyTokenInput.value = "";
+    maskyTokenInput.placeholder = "mky_...";
+  }
 }
 
 async function updateSpeaker(patch) {
@@ -1203,9 +1231,9 @@ maskyLoginBtn.addEventListener("click", async () => {
   maskyLoginBtn.disabled = true;
   maskyStatus.textContent = "waiting for browser login…";
   try {
-    const res = await hud.speakerLogin();
+    await hud.speakerLogin();
     settings = await hud.getSettings();
-    maskyStatus.textContent = `connected${res.accountName ? ` as ${res.accountName}` : ""}`;
+    renderMaskyAuth();
     speakerNote.textContent = "";
   } catch (err) {
     maskyStatus.textContent = "not connected";
@@ -1222,12 +1250,26 @@ maskyTokenInput.addEventListener("change", async () => {
   try {
     await hud.speakerVerifyToken(token);
     settings = await hud.getSettings();
-    maskyStatus.textContent = "connected (API token)";
+    renderMaskyAuth();
     speakerNote.textContent = "";
   } catch (err) {
     maskyStatus.textContent = "not connected";
     speakerNote.textContent = `token rejected: ${err.message || err}`;
   }
+});
+
+// Startup backfill: an older stored token resolved to its identity.
+hud.onSpeakerIdentity(({ maskyAccountName, maskyAccountPicture }) => {
+  Object.assign(speakerCfg(), { maskyAccountName, maskyAccountPicture });
+  renderMaskyAuth();
+});
+
+maskyLogoutBtn.addEventListener("click", async () => {
+  settings.speaker = await hud.speakerLogout();
+  renderMaskyAuth();
+  speakerNote.textContent = speakerCfg().enabled
+    ? "connect your Masky account (or paste a token) to start"
+    : "";
 });
 
 speakerOwnAvatar.addEventListener("change", async () => {

@@ -60,12 +60,21 @@ const fakeClient = (overrides = {}) => ({
 test("speaker keeps the best candidate and never reads toxic messages", () => {
   const { speaker } = makeSpeaker({ cfg: baseCfg, client: fakeClient() });
   speaker.start();
-  speaker.noteJudged({ username: "a", platform: "twitch", text: "meh" }, { relevancy: 10, kind: "chatter" });
-  speaker.noteJudged({ username: "b", platform: "twitch", text: "good q" }, { relevancy: 80, kind: "question" });
-  speaker.noteJudged({ username: "c", platform: "twitch", text: "slur" }, { relevancy: 95, kind: "toxic" });
-  speaker.noteJudged({ username: "d", platform: "twitch", text: "late tie" }, { relevancy: 80, kind: "question" });
+  speaker.noteJudged({ user: { name: "a" }, source: { type: "twitch" }, text: "meh" }, { relevancy: 10, kind: "chatter" });
+  speaker.noteJudged({ user: { name: "b" }, source: { type: "twitch" }, text: "good q" }, { relevancy: 80, kind: "question" });
+  speaker.noteJudged({ user: { name: "c" }, source: { type: "twitch" }, text: "slur" }, { relevancy: 95, kind: "toxic" });
+  speaker.noteJudged({ user: { name: "d" }, source: { type: "twitch" }, text: "late tie" }, { relevancy: 80, kind: "question" });
   // ties go to the newest message
   assert.equal(speaker.candidate.username, "d");
+  speaker.stop();
+});
+
+test("a candidate missing its user name never reads 'undefined says'", () => {
+  const { speaker } = makeSpeaker({ cfg: baseCfg, client: fakeClient() });
+  speaker.start();
+  speaker.noteJudged({ text: "who made this?" }, { relevancy: 60, kind: "question" });
+  assert.equal(speaker.candidate.username, "a viewer");
+  assert.equal(speaker.compose(speaker.candidate), "a viewer says: who made this?");
   speaker.stop();
 });
 
@@ -73,7 +82,7 @@ test("candidates are ignored while stopped", () => {
   const { speaker } = makeSpeaker({ cfg: { ...baseCfg, enabled: false }, client: fakeClient() });
   speaker.start(); // enabled=false -> no timer
   assert.equal(speaker.running, false);
-  speaker.noteJudged({ username: "a", platform: "t", text: "x" }, { relevancy: 99, kind: "question" });
+  speaker.noteJudged({ user: { name: "a" }, source: { type: "t" }, text: "x" }, { relevancy: 99, kind: "question" });
   assert.equal(speaker.candidate, null);
 });
 
@@ -87,7 +96,7 @@ test("tick renders the candidate, prefixes the author, and clears the window", a
   });
   const { speaker, events } = makeSpeaker({ cfg: baseCfg, client });
   speaker.start();
-  speaker.noteJudged({ username: "viewer1", platform: "twitch", text: "is this the new patch?" }, { relevancy: 70, kind: "question" });
+  speaker.noteJudged({ user: { name: "viewer1" }, source: { type: "twitch" }, text: "is this the new patch?" }, { relevancy: 70, kind: "question" });
   const url = await speaker.tick();
   assert.equal(url, "https://signed/v.mp4");
   assert.equal(spoken[0].text, "viewer1 says: is this the new patch?");
@@ -119,7 +128,7 @@ test("insufficient credits surfaces the balance from the 402 and errors out", as
   });
   const { speaker, events } = makeSpeaker({ cfg: baseCfg, client });
   speaker.start();
-  speaker.noteJudged({ username: "a", platform: "t", text: "x" }, { relevancy: 50, kind: "question" });
+  speaker.noteJudged({ user: { name: "a" }, source: { type: "t" }, text: "x" }, { relevancy: 50, kind: "question" });
   const url = await speaker.tick();
   assert.equal(url, null);
   assert.equal(events.errors[0].code, "insufficient_credits");
@@ -134,7 +143,7 @@ test("successful render decrements the local balance by creditsCharged", async (
   });
   speaker.start();
   speaker.balance = 1.0;
-  speaker.noteJudged({ username: "a", platform: "t", text: "x" }, { relevancy: 50, kind: "question" });
+  speaker.noteJudged({ user: { name: "a" }, source: { type: "t" }, text: "x" }, { relevancy: 50, kind: "question" });
   await speaker.tick();
   assert.ok(Math.abs(speaker.balance - 0.9) < 1e-9);
   speaker.stop();

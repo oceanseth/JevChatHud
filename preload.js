@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("hud", {
   speakerUpdate: (patch) => ipcRenderer.invoke("speaker:update", patch),
   speakerLogin: () => ipcRenderer.invoke("speaker:login"),
   speakerVerifyToken: (token) => ipcRenderer.invoke("speaker:verify-token", token),
+  speakerLogout: () => ipcRenderer.invoke("speaker:logout"),
   speakerAvatars: () => ipcRenderer.invoke("speaker:avatars"),
   speakerTest: () => ipcRenderer.invoke("speaker:test"),
   speakerState: () => ipcRenderer.invoke("speaker:state"),
@@ -38,6 +39,7 @@ contextBridge.exposeInMainWorld("hud", {
   onProfileActivated: on("profile:activated"),
   onOpenSettings: on("ui:open-settings"),
   onSpeakerState: on("speaker:state"),
+  onSpeakerIdentity: on("speaker:identity"),
   onSpeakerError: on("speaker:error"),
   onSpeakerPlayed: on("speaker:played"),
 });

@@ -161,10 +161,16 @@ never read on stream, and an interval with no judged messages is skipped
 - **Your Masky account powers it.** Readings are rendered by
   [masky.ai](https://masky.ai) and spend *your* credits — connect with
   **Login with Masky** (opens your browser; the token can be revoked from
-  your Masky account anytime) or paste an API token. The default voice is
-  the **Jev Judge** avatar on its creator's account; rendering it pays the
+  your Masky account anytime) or paste an API token. Once connected, the
+  panel shows your Masky identity — avatar, name, and a **logout** button
+  that returns you to the connect flow. The default voice is the
+  **Jev Judge** avatar on its creator's account; rendering it pays the
   creator through the mask marketplace. Advanced: check *use my own avatar*
   to render one of your own Masky avatars instead.
+
+<p align="center">
+  <img src="docs/screenshots/masky-connected.png" width="420" alt="Settings after connecting: Masky Connected with the account's avatar, name, and a logout button" />
+</p>
 - **Cost + estimate.** A reading costs ≈0.027 credits per second of speech
   (a typical chat line ≈ 0.05–0.13 credits). The settings panel and status
   bar show your balance as **estimated minutes of Jev talking** remaining,

@@ -111,6 +111,20 @@ class MaskyClient {
   }
 
   /**
+   * The identity behind an OAuth-issued token: {name, picture}. Pasted raw
+   * mky_ keys are not OAuth-sourced, so /oauth/userinfo rejects them — then
+   * resolve null and the UI shows a generic connected state.
+   */
+  async userinfo(token) {
+    try {
+      const data = await this.request("GET", "/oauth/userinfo", { token });
+      return { name: data.name || "", picture: data.picture || "" };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Render the avatar speaking `text` verbatim. Resolves to
    * {url, line, creditsCharged} with a signed video URL (~1h TTL — play it
    * promptly, don't store it).

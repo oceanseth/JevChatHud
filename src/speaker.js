@@ -41,9 +41,11 @@ class Speaker {
     if (judgment.kind === "toxic") return;
     const rel = judgment.relevancy ?? 0;
     if (!this.candidate || rel >= this.candidate.relevancy) {
+      // Chat messages carry {user: {name}, source: {type}} (see
+      // src/sources/*), not flat username/platform fields.
       this.candidate = {
-        username: msg.username,
-        platform: msg.platform,
+        username: msg.user?.name || "a viewer",
+        platform: msg.source?.type || "",
         text: msg.text,
         relevancy: rel,
       };
