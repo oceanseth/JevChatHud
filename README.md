@@ -228,8 +228,9 @@ from the gear, the File menu, or `Cmd+,`, and closes with the ✕ or `Esc` —
 there is no save button: every change saves the moment you make it. The panel
 has no scrollbar either; scroll with the wheel or just grab an empty spot and
 drag. The Appearance section controls the chat font, size, density, and
-timestamps — changes apply live. Packaged builds (`npm run dist`) produce a proper
-`JevChatHud.app` with its own icon.
+timestamps — changes apply live. Packaged builds (`npm run dist` on a Mac) produce a proper
+`JevChatHud.app` with its own icon. GitHub Releases ship Windows installers
+and macOS disk images — see [Releases](#releases).
 
 <p align="center">
   <img src="docs/screenshots/settings.png" width="420" alt="Settings: API key, appearance, profiles and sources" />
@@ -259,6 +260,27 @@ save, and pick the profile in the top bar.
 Jev is priced per input token ($0.042/Mtok as of writing); the status bar
 shows a running token/cost counter. A busy chat batches ~8 messages per
 request, so even fast chats stay cheap.
+
+## Releases
+
+Windows and macOS downloads are published from **Actions → Publish Release → Run workflow**. That workflow is manual-only: it tags a version, builds installers on GitHub-hosted Windows and macOS runners, and attaches them to a GitHub Release.
+
+1. Open [Actions → Publish Release](https://github.com/oceanseth/JevChatHud/actions/workflows/release.yml).
+2. Click **Run workflow**.
+3. Leave **version** blank to ship the current `package.json` version — if that tag already exists, it bumps **patch** / **minor** / **major** instead. Or type an explicit semver such as `0.3.0`.
+4. When it finishes, the Release page has:
+
+   - `JevChatHud-Setup-<version>.exe` — Windows installer
+   - `JevChatHud-Portable-<version>.exe` — Windows portable
+   - `JevChatHud-<version>-mac-arm64.dmg` — Apple Silicon
+   - `JevChatHud-<version>-mac-x64.dmg` — Intel Mac
+
+Builds are unsigned. First-open SmartScreen / Gatekeeper warnings are expected — on a Mac, right-click → **Open**. Local packaging (same electron-builder config the Action uses):
+
+```sh
+npm run dist:win   # Windows; run on Windows
+npm run dist:mac   # macOS dmg for arm64 + x64; run on macOS
+```
 
 ## Tests
 
