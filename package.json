@@ -7,6 +7,8 @@
     "start": "electron .",
     "test": "node --test",
     "dist": "electron-builder --mac --dir",
+    "dist:mac": "electron-builder --mac dmg --arm64 --x64 --publish never",
+    "dist:win": "electron-builder --win nsis portable --publish never",
     "dist:dmg": "electron-builder --mac"
   },
   "license": "MIT",
@@ -29,15 +31,39 @@
     "files": [
       "main.js",
       "preload.js",
+      "preload-share.js",
       "src/**/*",
       "renderer/**/*",
-      "assets/icon-1024.png",
+      "assets/**/*",
       "package.json"
     ],
+    "win": {
+      "icon": "assets/icon-1024.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "build/icon.icns",
-      "identity": null
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     }
   }
 }

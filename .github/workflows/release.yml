@@ -1,0 +1,192 @@
+# Manual release: Actions → Publish Release → Run workflow.
+# Ships a GitHub Release tagged vX.Y.Z with Windows and macOS downloads.
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver to ship (e.g. 0.3.0). Leave blank to use package.json, or bump if that tag already exists."
+        required: false
+        type: string
+      bump:
+        description: "When version is blank and the current version is already tagged, bump this part"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Tag version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
+      tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install and test
+        run: |
+          npm ci
+          npm test
+
+      - id: set
+        name: Resolve version, commit, and tag
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          VERSION="$(node <<'EOF'
+          const { execSync } = require("child_process");
+          const pkg = require("./package.json");
+          const current = pkg.version;
+          const requested = (process.env.INPUT_VERSION || "").trim().replace(/^v/i, "");
+          const bump = process.env.INPUT_BUMP || "patch";
+          const tags = new Set(
+            execSync("git tag -l", { encoding: "utf8" })
+              .split(/\n/)
+              .map((t) => t.trim())
+              .filter(Boolean)
+          );
+          const valid = (v) => /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v);
+          const inc = (v, part) => {
+            const core = v.split("-")[0];
+            const [a, b, c] = core.split(".").map(Number);
+            if (part === "major") return `${a + 1}.0.0`;
+            if (part === "minor") return `${a}.${b + 1}.0`;
+            return `${a}.${b}.${c + 1}`;
+          };
+          let version;
+          if (requested) {
+            version = requested;
+          } else if (!tags.has(`v${current}`)) {
+            version = current;
+          } else {
+            version = inc(current, bump);
+          }
+          if (!valid(version)) {
+            console.error(`Invalid version: ${version}`);
+            process.exit(1);
+          }
+          if (tags.has(`v${version}`)) {
+            console.error(`Tag v${version} already exists`);
+            process.exit(1);
+          }
+          process.stdout.write(version);
+          EOF
+          )"
+          CURRENT="$(node -p "require('./package.json').version")"
+          if [ "$CURRENT" != "$VERSION" ]; then
+            npm version "$VERSION" --no-git-tag-version
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json package-lock.json
+            git commit -m "Release v${VERSION}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            args: --win nsis portable
+          - os: macos-latest
+            name: macos
+            args: --mac dmg --arm64 --x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.args }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.dmg
+
+  publish:
+    name: GitHub Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          NOTES="$(cat <<EOF
+          Windows and macOS builds of JevChatHud **${VERSION}**.
+
+          | File | Platform |
+          | --- | --- |
+          | \`JevChatHud-Setup-${VERSION}.exe\` | Windows installer (x64) |
+          | \`JevChatHud-Portable-${VERSION}.exe\` | Windows portable (x64) |
+          | \`JevChatHud-${VERSION}-mac-arm64.dmg\` | macOS Apple Silicon |
+          | \`JevChatHud-${VERSION}-mac-x64.dmg\` | macOS Intel |
+
+          Builds are unsigned. Windows SmartScreen and macOS Gatekeeper will warn on first open — on a Mac, right-click the app → **Open**.
+          EOF
+          )"
+          gh release create "$TAG" dist/*.exe dist/*.dmg \
+            --title "JevChatHud ${VERSION}" \
+            --notes "$NOTES" \
+            --generate-notes
