@@ -103,7 +103,9 @@ button.active { color: var(--accent); border-color: var(--accent); }
 }
 #relevancy { flex: 1; accent-color: var(--accent); }
 #relevancy-value { min-width: 3ch; color: var(--text); font-variant-numeric: tabular-nums; }
-#see-all-label { color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
+#see-all-label,
+#facts-only-label { color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
+#facts-only-label.inactive { opacity: 0.45; }
 
 /* Tag filter bar: per-kind chips with live counts. Selecting any tag switches
    the feed from relevancy-threshold mode to kind mode (>50% confidence). */

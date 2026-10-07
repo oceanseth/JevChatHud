@@ -1,7 +1,9 @@
 // Jev judge: batches incoming chat messages and asks TypeSafe for structured
 // judgments. One request carries the whole batch (speculative fan-out): per
-// message a Score for attention-worthiness and a Choice for the message kind.
-// Code owns the policy: the HUD's relevancy slider thresholds the raw scores.
+// message a Score for attention-worthiness, a Score for factuality, and a
+// Choice for the message kind. Code owns the policy: the HUD's slider
+// thresholds the raw scores, and the "facts only" checkbox just swaps which
+// score it thresholds — toggling never re-runs inference.
 const { TypeSafeClient, score, choice } = require("@typesafe-ai/sdk");
 
 const FLUSH_MS = 1200;
@@ -16,6 +18,18 @@ const RELEVANCE_LEVELS = [
   "Mildly interesting: light small talk or a passing comment the streamer could acknowledge, but nothing is lost by skipping it.",
   "Worth noticing soon: a genuine question, concrete feedback, a viewer sharing something personal, or information relevant to what the streamer is doing.",
   "Needs the streamer now: a direct question the viewer is waiting on, a report that the stream itself is broken (no audio, frozen video, wrong scene), a raid or large donation, a safety issue, or other time-sensitive information.",
+];
+
+// Ordered rubric for the facts-only lens, indexed from zero. Framing follows
+// the fact-vs-opinion literature (ClaimBuster's non-factual / unimportant
+// factual / check-worthy factual taxonomy, CheckThat!'s subjectivity task):
+// the dimension is whether the message ASSERTS something verifiable, not
+// whether the assertion is true. Expected score / 3 * 100 = factuality.
+const FACTUAL_LEVELS = [
+  "Pure opinion, emotion, or reaction: a preference, value judgment, joke, insult, emote spam, hype, or a question. The message asserts nothing that could be checked.",
+  "Speculation presented as a statement: a prediction, guess, rumor, or personal interpretation with no evidence anyone could verify.",
+  "A factual statement about the speaker's own experience: something concrete that happened, but only the speaker could verify it (what they did, saw, or ran into).",
+  "A verifiable factual claim about the world, the game, or the stream: others could check it against an external source or the stream itself.",
 ];
 
 const KIND_CRITERIA = {
@@ -82,6 +96,10 @@ class Judge {
         `Considering \`stream_context\` and \`recent_chat\`, how much does chat message \`messages[${i}]\` deserve the streamer's personal attention right now?`,
         RELEVANCE_LEVELS
       );
+      questions[`m${i}_factual`] = score(
+        `To what degree does chat message \`messages[${i}]\` state a fact rather than express an opinion? Judge only whether it asserts something verifiable, not whether it is true.`,
+        FACTUAL_LEVELS
+      );
       questions[`m${i}_kind`] = choice(
         `What kind of message is \`messages[${i}]\`?`,
         KIND_CRITERIA
@@ -109,11 +127,14 @@ class Judge {
       });
       batch.forEach((m, i) => {
         const rel = response.answers[`m${i}_relevance`];
+        const factual = response.answers[`m${i}_factual`];
         const kind = response.answers[`m${i}_kind`];
         const maxLevel = RELEVANCE_LEVELS.length - 1;
         this.onJudged(m.id, {
           relevancy: Math.round((rel.score / maxLevel) * 100),
           relevanceConfidence: rel.confidence,
+          factuality: Math.round((factual.score / (FACTUAL_LEVELS.length - 1)) * 100),
+          factualConfidence: factual.confidence,
           kind: kind.choice,
           kindConfidence: kind.confidence,
         });
@@ -149,4 +170,4 @@ class Judge {
   }
 }
 
-module.exports = { Judge, RELEVANCE_LEVELS, KIND_CRITERIA };
+module.exports = { Judge, RELEVANCE_LEVELS, FACTUAL_LEVELS, KIND_CRITERIA };

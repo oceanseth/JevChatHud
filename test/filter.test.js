@@ -7,7 +7,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const j = (kind, kindConfidence, relevancy) => ({ kind, kindConfidence, relevancy });
+const j = (kind, kindConfidence, relevancy, factuality) => ({ kind, kindConfidence, relevancy, factuality });
 
 test("KINDS mirrors the judge's KIND_CRITERIA", () => {
   assert.deepEqual([...KINDS].sort(), Object.keys(KIND_CRITERIA).sort());
@@ -46,6 +46,33 @@ test("tags selected: only selected kinds above 50% confidence show", () => {
   assert.ok(!messageVisible(j("question", KIND_CONFIDENCE_MIN, 100), view)); // exactly 50% fails
   assert.ok(!messageVisible(j("hype", 0.99, 100), view)); // unselected kind hidden
   assert.ok(!messageVisible(null, view));
+});
+
+test("facts only: slider thresholds factuality instead of relevancy", () => {
+  const view = { seeAll: false, kinds: [], threshold: 55, factsOnly: true };
+  // an opinionated hype message with high relevancy is hidden...
+  assert.ok(!messageVisible(j("hype", 0.9, 90, 10), view));
+  // ...while a low-relevancy factual statement shows
+  assert.ok(messageVisible(j("chatter", 0.9, 20, 80), view));
+  assert.ok(messageVisible(j("feedback", 0.9, 0, 55), view)); // exactly at threshold
+  assert.ok(!messageVisible(null, view));
+});
+
+test("facts only: judgments without a factuality score stay hidden", () => {
+  // pre-factual-build judgment: factuality undefined, even threshold 0 hides it
+  const old = { kind: "question", kindConfidence: 0.9, relevancy: 90 };
+  assert.ok(!messageVisible(old, { seeAll: false, kinds: [], threshold: 0, factsOnly: true }));
+  assert.ok(messageVisible(old, { seeAll: true, kinds: [], threshold: 0, factsOnly: true }));
+});
+
+test("facts only defers to see-all and tag mode, like the slider does", () => {
+  const opinion = j("hype", 0.9, 90, 5);
+  assert.ok(messageVisible(opinion, { seeAll: true, kinds: [], threshold: 55, factsOnly: true }));
+  assert.ok(messageVisible(opinion, { seeAll: false, kinds: ["hype"], threshold: 55, factsOnly: true }));
+});
+
+test("factsOnly defaults off and persists like other view settings", () => {
+  assert.equal(DEFAULTS.factsOnly, false);
 });
 
 test("tag mode surfaces kinds the relevancy slider would always hide", () => {

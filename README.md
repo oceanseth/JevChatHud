@@ -28,11 +28,24 @@ session: 45 messages judged for $0.0013.*
   doesn't"). Jev judges every message against it.
 - Messages are batched (~1s) into a single TypeSafe request using the
   [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) pattern:
-  per message one Score (four attention levels → relevancy 0–100) and one
-  Choice (question / stream issue / feedback / personal / hype / chatter / toxic).
+  per message two Scores (four attention levels → relevancy 0–100, and four
+  factuality levels → factual 0–100) and one Choice
+  (question / stream issue / feedback / personal / hype / chatter / toxic).
 - The **relevancy slider** (0–100) filters the feed against Jev's scores in
   realtime — thresholds live in code/UI, not the model, so sliding it never
   re-runs inference. **See all** bypasses curation entirely.
+- **Facts only** swaps the dimension the slider thresholds: instead of
+  attention-worthiness it curates on Jev's factuality score — does the message
+  *assert something verifiable* (a checkable claim about the game, the stream,
+  the world) rather than express an opinion, reaction, or hype? The rubric
+  follows the fact-vs-opinion literature
+  ([ClaimBuster](https://arxiv.org/abs/2004.14425)'s non-factual / unimportant
+  factual / check-worthy taxonomy): pure opinion → unverifiable speculation →
+  personal-experience fact → publicly verifiable claim. It scores *checkability,
+  not truth*. Both dimensions are judged per message in the same request
+  ([composite scoring](https://docs.typesafe.ai/patterns/composite-scoring)),
+  so toggling the checkbox re-curates every already-judged message instantly —
+  no re-inference, no extra cost.
 - The **tag bar** filters by message kind instead: click any combination of
   kind chips (each shows a live count) to see only messages Jev tagged with
   one of those kinds at >50% confidence — `all` / `none` bulk-toggle. While

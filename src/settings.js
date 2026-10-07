@@ -9,6 +9,7 @@ const DEFAULTS = {
   model: "jev-latest",
   relevancyThreshold: 55, // 0-100; messages scoring below are hidden in curated view
   kindFilter: [], // selected message kinds; non-empty replaces the relevancy filter
+  factsOnly: false, // slider thresholds Jev's factuality score instead of relevancy
   seeAll: false,
   appearance: {
     fontFamily: "system", // key into the renderer's font map

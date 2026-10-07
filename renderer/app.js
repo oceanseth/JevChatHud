@@ -6,6 +6,8 @@ const profileSelect = document.getElementById("profile-select");
 const relevancySlider = document.getElementById("relevancy");
 const relevancyValue = document.getElementById("relevancy-value");
 const seeAllCheck = document.getElementById("see-all");
+const factsOnlyCheck = document.getElementById("facts-only");
+const metricName = document.getElementById("metric-name");
 const statusRow = document.getElementById("status-row");
 const statsEl = document.getElementById("stats");
 const judgeErrorEl = document.getElementById("judge-error");
@@ -41,6 +43,7 @@ function applyFilter(row) {
     seeAll: seeAllCheck.checked,
     kinds: [...selectedKinds],
     threshold: Number(relevancySlider.value),
+    factsOnly: factsOnlyCheck.checked,
   });
   row.classList.toggle("hidden-by-filter", !visible);
   if (visible) checkClamp(row);
@@ -129,6 +132,28 @@ function addMessage(msg) {
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
+// The score chip shows whichever dimension the HUD is currently curating on:
+// Jev's attention relevancy, or its factuality score in facts-only mode. The
+// tooltip always carries both so toggling the checkbox explains itself.
+function renderScoreChip(row) {
+  const j = row._judgment;
+  if (!j) return;
+  const factsMode = factsOnlyCheck.checked;
+  const metric = factsMode ? j.factuality : j.relevancy;
+  if (metric == null) {
+    // judged before the factual dimension existed
+    row._relChip.textContent = "?";
+    row._relChip.className = "chip rel pending";
+    row._relChip.title = "no factuality score — judged by an older build";
+    return;
+  }
+  row._relChip.textContent = metric;
+  row._relChip.className = `chip rel ${relClass(metric)}`;
+  const rel = `relevancy ${j.relevancy}/100 (confidence ${j.relevanceConfidence.toFixed(2)})`;
+  const fact = j.factuality == null ? "" : `factual ${j.factuality}/100 (confidence ${j.factualConfidence.toFixed(2)})`;
+  row._relChip.title = factsMode ? `${fact} · ${rel}` : fact ? `${rel} · ${fact}` : rel;
+}
+
 function markJudged({ id, judgment }) {
   const row = rows.get(id);
   if (!row) return;
@@ -141,9 +166,7 @@ function markJudged({ id, judgment }) {
   } else {
     row.classList.remove("dim");
     row._judgment = judgment;
-    row._relChip.textContent = judgment.relevancy;
-    row._relChip.className = `chip rel ${relClass(judgment.relevancy)}`;
-    row._relChip.title = `relevancy ${judgment.relevancy}/100 (confidence ${judgment.relevanceConfidence.toFixed(2)})`;
+    renderScoreChip(row);
 
     const kindChip = document.createElement("span");
     kindChip.className = `chip kind-${judgment.kind}`;
@@ -322,7 +345,9 @@ function syncFilterControls() {
     chip.classList.toggle("active", selectedKinds.has(kind));
   }
   // Communicate precedence: tags replace the slider; "see all" bypasses both.
+  metricName.textContent = factsOnlyCheck.checked ? "factual" : "relevancy";
   document.getElementById("relevancy-label").classList.toggle("inactive", tagsActive || seeAllCheck.checked);
+  document.getElementById("facts-only-label").classList.toggle("inactive", tagsActive || seeAllCheck.checked);
   relevancySlider.disabled = tagsActive;
   relevancySlider.title = tagsActive ? "tag filter active — clear tags to use the relevancy slider" : "";
   tagbar.classList.toggle("inactive", seeAllCheck.checked);
@@ -495,6 +520,14 @@ relevancySlider.addEventListener("change", () => {
 seeAllCheck.addEventListener("change", () => {
   hud.updateSettings({ seeAll: seeAllCheck.checked });
   syncFilterControls();
+  refilterAll();
+});
+
+factsOnlyCheck.addEventListener("change", () => {
+  hud.updateSettings({ factsOnly: factsOnlyCheck.checked });
+  syncFilterControls();
+  // Pure display policy: re-render chips and re-threshold, no re-judging.
+  for (const row of rows.values()) renderScoreChip(row);
   refilterAll();
 });
 
@@ -706,6 +739,7 @@ hud.onOpenSettings(() => openSettingsPanel());
   relevancySlider.value = settings.relevancyThreshold;
   relevancyValue.textContent = settings.relevancyThreshold;
   seeAllCheck.checked = settings.seeAll;
+  factsOnlyCheck.checked = !!settings.factsOnly;
   pinBtn.classList.toggle("active", settings.alwaysOnTop);
   buildTagBar();
   for (const k of settings.kindFilter || []) if (KINDS.includes(k)) selectedKinds.add(k);

@@ -26,8 +26,11 @@
 
   <div id="controls">
     <label id="relevancy-label">
-      relevancy <span id="relevancy-value">55</span>
+      <span id="metric-name">relevancy</span> <span id="relevancy-value">55</span>
       <input type="range" id="relevancy" min="0" max="100" value="55" />
+    </label>
+    <label id="facts-only-label" title="Judge against fact vs opinion: the slider thresholds Jev's factuality score (does the message state something verifiable?) instead of attention relevancy.">
+      <input type="checkbox" id="facts-only" /> facts only
     </label>
     <label id="see-all-label">
       <input type="checkbox" id="see-all" /> see all
