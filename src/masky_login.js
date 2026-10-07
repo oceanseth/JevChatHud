@@ -32,6 +32,9 @@ function maskyLogin({ openExternal, fetchImpl = fetch, timeoutMs = 300000 } = {}
     const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
     const state = b64url(crypto.randomBytes(16));
     let settled = false;
+    // Captured at listen time: server.address() returns null once close() has
+    // been called, so the callback handler must not read it after closing.
+    let redirectUri = "";
 
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, "http://127.0.0.1");
@@ -48,7 +51,6 @@ function maskyLogin({ openExternal, fetchImpl = fetch, timeoutMs = 300000 } = {}
         if (url.searchParams.get("state") !== state) throw new Error("state mismatch");
         const code = url.searchParams.get("code");
         if (!code) throw new Error(url.searchParams.get("error") || "login was denied");
-        const redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
         const tokenRes = await fetchImpl(TOKEN_URL, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -79,7 +81,7 @@ function maskyLogin({ openExternal, fetchImpl = fetch, timeoutMs = 300000 } = {}
     if (timer.unref) timer.unref();
 
     server.listen(0, "127.0.0.1", () => {
-      const redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
+      redirectUri = `http://127.0.0.1:${server.address().port}/callback`;
       const authUrl =
         `${AUTHORIZE_URL}?client_id=${CLIENT_ID}` +
         `&redirect_uri=${encodeURIComponent(redirectUri)}` +
