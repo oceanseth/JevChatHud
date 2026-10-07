@@ -1,10 +1,11 @@
-const { app, BrowserWindow, Menu, ipcMain, systemPreferences, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, systemPreferences, shell, dialog } = require("electron");
 const path = require("path");
 const { Settings } = require("./src/settings");
 const { SourceManager } = require("./src/sources");
 const { Judge } = require("./src/judge");
 const { UserStats } = require("./src/user_stats");
 const { Transcriber } = require("./src/stt");
+const winstall = require("./src/whisper_install");
 const { Speaker } = require("./src/speaker");
 const { MaskyClient } = require("./src/masky");
 const { maskyLogin } = require("./src/masky_login");
@@ -177,7 +178,7 @@ app.whenReady().then(() => {
 
   settings = new Settings(app.getPath("userData"));
   userStats = new UserStats(app.getPath("userData"));
-  transcriber = new Transcriber(settings.get().mic || {});
+  transcriber = new Transcriber({ ...(settings.get().mic || {}), userData: app.getPath("userData") });
 
   judge = new Judge({
     getConfig: () => settings.get(),
@@ -308,6 +309,71 @@ app.whenReady().then(() => {
     return res;
   });
   ipcMain.handle("stt:test", (_e, pcm) => transcriber.transcribe(toFloat32(pcm)));
+
+  // Guided whisper setup (Settings → Microphone). After any install step the
+  // transcriber re-resolves in place so the rolling transcript survives.
+  const sttSetupStatus = () =>
+    winstall.status({ userData: app.getPath("userData"), config: settings.get().mic || {} });
+  const sttRefresh = () => transcriber.setPaths(settings.get().mic || {});
+  // A successful install must not stay shadowed by a stale manual override —
+  // drop the override so autodetection finds the artifact that was just put
+  // in place (managed engine dir / model cache / brew prefix).
+  const sttClearOverride = (key) => {
+    const mic = { ...(settings.get().mic || {}) };
+    if (mic[key]) {
+      delete mic[key];
+      settings.update({ mic });
+    }
+  };
+  let sttInstallBusy = false;
+  const installProgress = (kind) => (p) => send("stt:install-progress", { kind, ...p });
+  ipcMain.handle("stt:setup-status", () => sttSetupStatus());
+  ipcMain.handle("stt:install-model", async (_e, id) => {
+    if (sttInstallBusy) return { error: "an install is already running" };
+    sttInstallBusy = true;
+    try {
+      await winstall.downloadModel(id, { onProgress: installProgress("model") });
+      sttClearOverride("whisperModel");
+      sttRefresh();
+      return sttSetupStatus();
+    } catch (err) {
+      return { error: String(err.message || err) };
+    } finally {
+      sttInstallBusy = false;
+    }
+  });
+  ipcMain.handle("stt:install-bin", async () => {
+    if (sttInstallBusy) return { error: "an install is already running" };
+    sttInstallBusy = true;
+    try {
+      if (process.platform === "darwin") {
+        await winstall.brewInstall({ onLog: (line) => send("stt:install-progress", { kind: "brew", line }) });
+      } else {
+        await winstall.downloadBinary({ userData: app.getPath("userData"), onProgress: installProgress("bin") });
+      }
+      sttClearOverride("whisperBin");
+      sttRefresh();
+      return sttSetupStatus();
+    } catch (err) {
+      return { error: String(err.message || err) };
+    } finally {
+      sttInstallBusy = false;
+    }
+  });
+  ipcMain.handle("stt:locate", async (_e, which) => {
+    const isBin = which === "bin";
+    const res = await dialog.showOpenDialog(win, {
+      title: isBin ? "Locate whisper-cli" : "Locate a ggml whisper model (.bin)",
+      properties: ["openFile", "showHiddenFiles"],
+      filters: isBin ? [] : [{ name: "ggml model", extensions: ["bin"] }],
+    });
+    if (res.canceled || !res.filePaths[0]) return sttSetupStatus();
+    const mic = { ...(settings.get().mic || {}) };
+    mic[isBin ? "whisperBin" : "whisperModel"] = res.filePaths[0];
+    settings.update({ mic });
+    sttRefresh();
+    return sttSetupStatus();
+  });
 
   createWindow();
 

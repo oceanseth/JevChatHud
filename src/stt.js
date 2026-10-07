@@ -4,38 +4,19 @@
 // ~75s is what the judge reads as `streamer_speech` context. Audio and
 // transcript never leave the machine.
 //
-// Binary/model resolve from common install locations; config.json's mic block
-// accepts `whisperBin` and `whisperModel` overrides (no UI — power users).
+// Binary/model resolution lives in whisper_install (shared with the guided
+// settings installer); config.json's mic block accepts `whisperBin` and
+// `whisperModel` overrides, which always win.
 const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const winstall = require("./whisper_install");
 
 const SAMPLE_RATE = 16000;
 const KEEP_MS = 75_000; // transcript retention; the judge reads the last 60s
 
-const BIN_CANDIDATES = [
-  "/opt/homebrew/bin/whisper-cli",
-  "/usr/local/bin/whisper-cli",
-];
-const MODEL_CANDIDATES = [
-  path.join(os.homedir(), ".cache", "jevchathud", "ggml-small.en.bin"),
-  path.join(os.homedir(), ".cache", "whisper", "ggml-small.en.bin"),
-  path.join(os.homedir(), ".cache", "hyperframes", "whisper", "models", "ggml-small.en.bin"),
-  path.join(os.homedir(), ".cache", "hyperframes", "whisper", "models", "ggml-base.en.bin"),
-];
-
-function firstExisting(paths) {
-  for (const p of paths) {
-    try {
-      fs.accessSync(p);
-      return p;
-    } catch {
-      /* keep looking */
-    }
-  }
-  return null;
-}
+const SETUP_HINT = "set it up in Settings → Microphone";
 
 function wavFromFloat32(float32) {
   const pcm = Buffer.alloc(float32.length * 2);
@@ -60,19 +41,32 @@ function wavFromFloat32(float32) {
 }
 
 class Transcriber {
-  constructor({ whisperBin, whisperModel } = {}) {
-    this.bin = whisperBin || firstExisting(BIN_CANDIDATES) || "whisper-cli";
-    this.model = whisperModel || firstExisting(MODEL_CANDIDATES);
+  constructor({ whisperBin, whisperModel, userData } = {}) {
+    this.userData = userData || null;
+    this.setPaths({ whisperBin, whisperModel });
     this.lines = []; // { ts, text }
     this.busy = Promise.resolve();
   }
 
+  /** (Re)resolve binary + model, e.g. after the guided installer ran. */
+  setPaths({ whisperBin, whisperModel } = {}) {
+    const found = winstall.resolve({
+      userData: this.userData,
+      config: { whisperBin, whisperModel },
+    });
+    this.bin = found.whisperBin;
+    this.model = found.whisperModel;
+  }
+
   available() {
-    if (!this.model) {
-      return {
-        ok: false,
-        error: "no whisper model found — brew install whisper-cpp and put ggml-small.en.bin in ~/.cache/whisper/",
-      };
+    // An absolute path that no longer exists (deleted install, stale config
+    // override) needs setup just like nothing found at all.
+    const present = (p) => !!p && (!path.isAbsolute(p) || fs.existsSync(p));
+    if (!present(this.bin)) {
+      return { ok: false, needsSetup: true, error: `whisper engine not installed — ${SETUP_HINT}` };
+    }
+    if (!present(this.model)) {
+      return { ok: false, needsSetup: true, error: `no whisper speech model — ${SETUP_HINT}` };
     }
     return { ok: true };
   }
@@ -95,15 +89,23 @@ class Transcriber {
     fs.writeFileSync(tmp, wavFromFloat32(float32));
     try {
       const out = await new Promise((resolve, reject) => {
+        // The HUD-downloaded Linux build ships its shared libs next to the
+        // binary; point the loader there. Windows resolves DLLs beside the
+        // exe on its own.
+        const env =
+          process.platform === "linux"
+            ? { ...process.env, LD_LIBRARY_PATH: [path.dirname(this.bin), process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") }
+            : process.env;
         const child = spawn(this.bin, ["-m", this.model, "-f", tmp, "-nt", "-np"], {
           stdio: ["ignore", "pipe", "pipe"],
+          env,
         });
         let stdout = "";
         let stderr = "";
         child.stdout.on("data", (d) => (stdout += d));
         child.stderr.on("data", (d) => (stderr += d));
         child.on("error", (e) =>
-          reject(e.code === "ENOENT" ? new Error("whisper-cli not found — brew install whisper-cpp") : e)
+          reject(e.code === "ENOENT" ? new Error(`whisper engine missing — ${SETUP_HINT}`) : e)
         );
         child.on("close", (code) =>
           code === 0

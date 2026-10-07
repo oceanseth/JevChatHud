@@ -34,10 +34,22 @@ test("rolling transcript: recentSpeech windows and prunes", () => {
 });
 
 test("transcribe without a model reports a setup error, not a throw", async () => {
-  const t = new Transcriber({ whisperModel: "/nonexistent/model.bin" });
-  t.model = null; // simulate nothing found on this machine
+  const t = new Transcriber();
+  t.bin = __filename; // engine present…
+  t.model = null; // …but no model on this machine
   const res = await t.transcribe(new Float32Array(16000));
-  assert.match(res.error, /whisper model/);
+  assert.match(res.error, /whisper speech model/);
+  assert.match(res.error, /Settings → Microphone/);
+});
+
+test("missing engine points at guided setup, not brew", () => {
+  const t = new Transcriber();
+  t.bin = null; // simulate no whisper anywhere
+  const st = t.available();
+  assert.equal(st.ok, false);
+  assert.equal(st.needsSetup, true);
+  assert.match(st.error, /Settings → Microphone/);
+  assert.doesNotMatch(st.error, /brew/); // the old hint was macOS-only
 });
 
 test("config overrides win over autodetection", () => {

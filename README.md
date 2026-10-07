@@ -111,10 +111,34 @@ stream, and the ~10s broadcast delay chat reacts behind is absorbed by the
 - **Settings → Microphone** picks the input device and has a **test mic**
   button: records ~3s with a live level meter, runs it through the exact same
   pipeline, and shows you what Jev heard.
-- Requires `whisper-cli` (`brew install whisper-cpp`) and a ggml model
-  (`ggml-small.en.bin` in `~/.cache/whisper/`, among other autodetected
-  locations); `mic.whisperBin` / `mic.whisperModel` in `config.json` override.
-  The mic status in the footer tells you if either is missing.
+- **Guided install, per OS.** The mic needs a local `whisper-cli` binary and
+  a ggml model; if either is missing, clicking the mic opens **Settings →
+  Microphone**, where a setup card installs both without leaving the app:
+  - **Windows / Linux** — one-click download of the official prebuilt
+    `whisper-cli` from the [whisper.cpp releases](https://github.com/ggml-org/whisper.cpp/releases)
+    (pinned tag, ~10 MB) into the app's data directory.
+  - **macOS** — one-click `brew install whisper-cpp` streamed in the UI
+    (whisper.cpp publishes no prebuilt mac CLI); if Homebrew itself is
+    missing, the card walks you through it.
+  - **Model** — pick `base.en` (141 MB, fast — recommended) or `small.en`
+    (465 MB, more accurate); downloads with a progress bar to
+    `~/.cache/jevchathud/`. Existing installs in `~/.cache/whisper/` and
+    other common locations are autodetected.
+  - Power users can point at their own build with the **locate…** buttons
+    (or `mic.whisperBin` / `mic.whisperModel` in `config.json` — overrides
+    always win).
+
+<p align="center">
+  <img src="docs/screenshots/stt-card-missing.png" width="420" alt="Guided whisper setup: engine and model missing, one-click install per OS" />
+  <br/><em>Nothing installed: the card offers the right install for your OS — prebuilt
+  download on Windows/Linux, Homebrew on macOS — and a model picker with sizes.</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/stt-card-ready.png" width="420" alt="Guided whisper setup: both rows green with resolved paths" />
+  <br/><em>After the guided install (or on a machine that already has whisper): both
+  rows green with the resolved paths.</em>
+</p>
 
 <p align="center">
   <img src="docs/screenshots/settings-mic.png" width="420" alt="Settings: microphone device picker and test" />

@@ -112,9 +112,39 @@
         <input type="checkbox" id="appearance-timestamps" /> show message timestamps
       </label>
 
-      <h2>Microphone</h2>
+      <h2 id="mic-heading">Microphone</h2>
       <div class="section-note block">When the mic is on, your recent speech is transcribed locally (never uploaded)
         and given to Jev as context — "relevant to what the streamer is saying right now".</div>
+
+      <div id="stt-setup">
+        <div class="stt-setup-head">Speech-to-text engine <span class="section-note">(local whisper — required for the mic)</span></div>
+        <div class="stt-row">
+          <span id="stt-bin-badge" class="stt-badge">…</span>
+          <span class="stt-row-label">whisper engine</span>
+          <span id="stt-bin-detail" class="stt-detail"></span>
+          <button id="stt-bin-install" class="hidden"></button>
+          <button id="stt-bin-locate" class="linklike">locate…</button>
+        </div>
+        <div id="stt-brew-help" class="section-note block hidden">
+          Install <a href="https://brew.sh" target="_blank" rel="noreferrer">Homebrew</a> first, then run
+          <code>brew install whisper-cpp</code> in Terminal and come back here.
+          <button id="stt-copy-brew" class="linklike">copy command</button>
+        </div>
+        <div class="stt-row">
+          <span id="stt-model-badge" class="stt-badge">…</span>
+          <span class="stt-row-label">speech model</span>
+          <span id="stt-model-detail" class="stt-detail"></span>
+          <select id="stt-model-select" class="hidden"></select>
+          <button id="stt-model-install" class="hidden">download</button>
+          <button id="stt-model-locate" class="linklike">locate…</button>
+        </div>
+        <div id="stt-progress" class="stt-progress hidden">
+          <div class="stt-progress-track"><div id="stt-progress-fill"></div></div>
+          <span id="stt-progress-text"></span>
+        </div>
+        <div id="stt-setup-error" class="section-note block error hidden"></div>
+      </div>
+
       <label class="field">Input device
         <select id="mic-device"></select>
       </label>

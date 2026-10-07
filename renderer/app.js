@@ -653,7 +653,7 @@ async function startMicCapture(deviceId) {
   micNode.connect(micCtx.destination); // keeps the processor pulled; outputs silence
 }
 
-async function setMicListening(on, { persist = true } = {}) {
+async function setMicListening(on, { persist = true, guide = true } = {}) {
   if (on === micListening) {
     // still reflect persisted intent in the UI on init
     micBtn.classList.toggle("active", micListening);
@@ -662,7 +662,12 @@ async function setMicListening(on, { persist = true } = {}) {
   if (on) {
     try {
       const st = await hud.sttStatus();
-      if (!st.ok) throw new Error(st.error);
+      if (!st.ok) {
+        // missing whisper: walk the user through the install instead of
+        // dead-ending in an error string
+        if (st.needsSetup && guide) openSettingsPanel({ focusMic: true });
+        throw new Error(st.error);
+      }
       const allowed = await hud.requestMicAccess();
       if (!allowed) throw new Error("microphone access denied (System Settings → Privacy)");
       await startMicCapture(settings.mic?.deviceId || "");
@@ -780,6 +785,146 @@ micTestBtn.addEventListener("click", async () => {
     micTestBtn.textContent = "test mic";
     micTestBtn.disabled = false;
   }
+});
+
+// ---------- guided whisper setup (settings → microphone) ----------
+// The mic needs a local whisper.cpp binary + ggml model. This card shows what
+// is missing and installs it in-app where the platform allows: prebuilt
+// downloads on Windows/Linux, Homebrew on macOS, manual locate everywhere.
+const sttSetupEl = document.getElementById("stt-setup");
+const sttBinBadge = document.getElementById("stt-bin-badge");
+const sttBinDetail = document.getElementById("stt-bin-detail");
+const sttBinInstall = document.getElementById("stt-bin-install");
+const sttBrewHelp = document.getElementById("stt-brew-help");
+const sttModelBadge = document.getElementById("stt-model-badge");
+const sttModelDetail = document.getElementById("stt-model-detail");
+const sttModelSelect = document.getElementById("stt-model-select");
+const sttModelInstall = document.getElementById("stt-model-install");
+const sttProgress = document.getElementById("stt-progress");
+const sttProgressFill = document.getElementById("stt-progress-fill");
+const sttProgressText = document.getElementById("stt-progress-text");
+const sttSetupError = document.getElementById("stt-setup-error");
+
+function applySttStatus(st) {
+  const setBadge = (el, ok) => {
+    el.textContent = ok ? "✓" : "✗";
+    el.classList.toggle("ok", ok);
+    el.classList.toggle("missing", !ok);
+  };
+  // ‎ (LRM) keeps the leading "/" from jumping to the visual end under
+  // the RTL front-ellipsis trick
+  setBadge(sttBinBadge, st.bin.ok);
+  sttBinDetail.textContent = st.bin.ok ? `‎${st.bin.path}‎` : "";
+  sttBinDetail.classList.toggle("path", st.bin.ok);
+  sttBinDetail.title = st.bin.path || "";
+  sttBinInstall.classList.toggle("hidden", st.bin.ok);
+  sttBrewHelp.classList.add("hidden");
+  if (!st.bin.ok) {
+    if (st.canDownloadBin) {
+      sttBinInstall.textContent = "download (~10 MB)";
+    } else if (st.brew.found) {
+      sttBinInstall.textContent = "install via Homebrew";
+    } else {
+      sttBinInstall.classList.add("hidden");
+      sttBrewHelp.classList.remove("hidden");
+    }
+  }
+  setBadge(sttModelBadge, st.model.ok);
+  sttModelDetail.textContent = st.model.ok ? `‎${st.model.path}‎` : "";
+  sttModelDetail.classList.toggle("path", st.model.ok);
+  sttModelDetail.title = st.model.path || "";
+  sttModelSelect.classList.toggle("hidden", st.model.ok);
+  sttModelInstall.classList.toggle("hidden", st.model.ok);
+  if (!st.model.ok && !sttModelSelect.options.length) {
+    for (const m of st.models) {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = `${m.id} · ${Math.round(m.bytes / 1048576)} MB — ${m.label.split("— ")[1] || ""}`;
+      sttModelSelect.append(opt);
+    }
+  }
+}
+
+async function renderSttSetup() {
+  sttSetupError.classList.add("hidden");
+  try {
+    applySttStatus(await hud.sttSetupStatus());
+  } catch (err) {
+    sttSetupError.textContent = `✗ ${err.message || err}`;
+    sttSetupError.classList.remove("hidden");
+  }
+}
+
+function sttSetupFailed(msg) {
+  sttSetupError.textContent = `✗ ${msg}`;
+  sttSetupError.classList.remove("hidden");
+}
+
+async function runSttInstall(btn, run) {
+  const label = btn.textContent;
+  btn.disabled = sttModelInstall.disabled = sttBinInstall.disabled = true;
+  btn.textContent = "installing…";
+  sttSetupError.classList.add("hidden");
+  sttProgress.classList.remove("hidden");
+  sttProgressFill.style.width = "0%";
+  sttProgressText.textContent = "starting…";
+  try {
+    const st = await run();
+    if (st.error) sttSetupFailed(st.error);
+    else {
+      applySttStatus(st);
+      // the install may have dropped a stale whisperBin/whisperModel override
+      // in the main process; refresh our copy so later mic updates (which
+      // replace the mic object wholesale) don't write it back
+      settings = await hud.getSettings();
+      // a completed install may clear the mic's error status line
+      if (st.bin.ok && st.model.ok && micStatusEl.classList.contains("error")) setMicStatus("");
+    }
+  } catch (err) {
+    sttSetupFailed(err.message || err);
+  } finally {
+    sttProgress.classList.add("hidden");
+    btn.textContent = label;
+    btn.disabled = sttModelInstall.disabled = sttBinInstall.disabled = false;
+  }
+}
+
+hud.onSttInstallProgress((p) => {
+  if (p.kind === "brew") {
+    sttProgressFill.style.width = "100%";
+    sttProgressText.textContent = p.line.slice(0, 80);
+    return;
+  }
+  const mb = (n) => (n / 1048576).toFixed(0);
+  if (p.total) {
+    sttProgressFill.style.width = `${Math.round((p.received / p.total) * 100)}%`;
+    sttProgressText.textContent = `${mb(p.received)} / ${mb(p.total)} MB`;
+  } else {
+    sttProgressText.textContent = `${mb(p.received)} MB`;
+  }
+});
+
+sttBinInstall.addEventListener("click", () =>
+  runSttInstall(sttBinInstall, () => hud.sttInstallBin())
+);
+sttModelInstall.addEventListener("click", () =>
+  runSttInstall(sttModelInstall, () => hud.sttInstallModel(sttModelSelect.value))
+);
+for (const [btn, which] of [
+  [document.getElementById("stt-bin-locate"), "bin"],
+  [document.getElementById("stt-model-locate"), "model"],
+]) {
+  btn.addEventListener("click", async () => {
+    const st = await hud.sttLocate(which);
+    if (st.error) sttSetupFailed(st.error);
+    else applySttStatus(st);
+    // locate writes mic.whisperBin/whisperModel in the main process; refresh
+    // our copy so later mic updates don't clobber it (mic replaces wholesale)
+    settings = await hud.getSettings();
+  });
+}
+document.getElementById("stt-copy-brew").addEventListener("click", () => {
+  navigator.clipboard.writeText("brew install whisper-cpp");
 });
 
 pinBtn.addEventListener("click", async () => {
@@ -909,7 +1054,7 @@ for (const btn of document.querySelectorAll("#add-source-row .add-source")) {
   });
 }
 
-function openSettingsPanel({ focusSources = false } = {}) {
+function openSettingsPanel({ focusSources = false, focusMic = false } = {}) {
   apiKeyInput.value = settings.typesafeApiKey || "";
   modelInput.value = settings.model || "jev-latest";
   const a = settings.appearance || {};
@@ -919,6 +1064,7 @@ function openSettingsPanel({ focusSources = false } = {}) {
   sizeValue.textContent = sizeSlider.value;
   timestampsCheck.checked = !!a.timestamps;
   populateMicDevices();
+  renderSttSetup();
   micTestResult.textContent = "";
   renderSpeakerUI();
   const active = settings.profiles.find((p) => p.id === settings.activeProfileId);
@@ -927,6 +1073,12 @@ function openSettingsPanel({ focusSources = false } = {}) {
   overlay.classList.remove("hidden");
   if (focusSources) {
     document.getElementById("sources-heading").scrollIntoView({ block: "start" });
+  }
+  if (focusMic) {
+    document.getElementById("mic-heading").scrollIntoView({ block: "start" });
+    sttSetupEl.classList.remove("flash");
+    void sttSetupEl.offsetWidth; // restart the animation on repeat opens
+    sttSetupEl.classList.add("flash");
   }
 }
 
@@ -1208,7 +1360,8 @@ hud.onOpenSettings(() => openSettingsPanel());
   // Resume listening if the mic was on when the app last closed.
   if (settings.mic?.enabled) {
     micListening = false;
-    await setMicListening(true, { persist: false });
+    // don't pop the settings panel open on launch if whisper went missing
+    await setMicListening(true, { persist: false, guide: false });
   }
   hud.speakerState(); // pushes the current Jev-speaks state to the statusbar
 })();

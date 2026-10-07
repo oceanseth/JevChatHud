@@ -405,6 +405,60 @@ body.show-timestamps .msg .time { display: inline; }
 #appearance-size { width: 100%; margin-top: 4px; accent-color: var(--accent); }
 #appearance-timestamps-label { color: var(--text-dim); font-size: 12px; display: flex; align-items: center; gap: 5px; }
 
+/* Guided whisper setup card (Settings → Microphone) */
+#stt-setup {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 8px 0;
+}
+.stt-setup-head { font-size: 12px; color: var(--text); margin-bottom: 6px; }
+.stt-row { display: flex; gap: 6px; align-items: center; margin: 6px 0; font-size: 12px; }
+.stt-row-label { color: var(--text-dim); flex-shrink: 0; }
+.stt-badge { width: 14px; text-align: center; flex-shrink: 0; }
+.stt-badge.ok { color: var(--green); }
+.stt-badge.missing { color: var(--red); }
+.stt-detail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ellipsize the front of long paths so the filename stays visible */
+.stt-detail.path { direction: rtl; text-align: left; }
+.stt-detail:empty { display: none; }
+.stt-row select { flex: 1; min-width: 0; }
+button.linklike {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+button.linklike:hover { text-decoration: underline; border: none; }
+#stt-brew-help code { user-select: all; }
+.stt-progress { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+.stt-progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+#stt-progress-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s; }
+#stt-progress-text { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.section-note.error { color: var(--red); }
+#stt-setup .hidden, #stt-brew-help.hidden, .stt-progress.hidden, #stt-setup-error.hidden { display: none; }
+#stt-setup.flash { animation: stt-flash 1.2s ease-out; }
+@keyframes stt-flash {
+  0% { border-color: var(--accent); box-shadow: 0 0 12px rgba(124, 92, 255, 0.5); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+
 #add-source-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .add-source { font-size: 12px; padding: 6px 10px; border-radius: 8px; flex: 1; white-space: nowrap; }
 .add-source.src-twitch:hover { border-color: #b78aff; color: #b78aff; }
