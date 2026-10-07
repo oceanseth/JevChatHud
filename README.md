@@ -57,6 +57,9 @@ session: 45 messages judged for $0.0013.*
   Judging continues in the background either way, so reopening his eyes
   restores a fully-curated feed instantly. The voicelines are the avatar
   itself speaking ([masky.ai](https://masky.ai) render, played in the coin).
+  The coin floats *above* the filter rows — overhanging the header with a
+  drop shadow — so he reads as the switch sitting on top of everything he
+  controls.
 - The **tag bar** filters by message kind instead: click any combination of
   kind chips (each shows a live count) to see only messages Jev tagged with
   one of those kinds at >50% confidence — `all` / `none` bulk-toggle. While
@@ -74,14 +77,22 @@ session: 45 messages judged for $0.0013.*
 including a 26-relevancy "bro??" question the slider would have hidden.*
 
 <p align="center">
+  <img src="docs/screenshots/jev-coin.png" width="560" alt="The Jev Judge coin overhanging the dual sliders and tag bar" />
+</p>
+
+*The command deck: the Jev Judge coin presiding over the dual sliders and the
+tag bar, with the mic toggle at his side.*
+
+<p align="center">
   <img src="docs/screenshots/jev-dual.png" width="420" alt="Dual sliders: relevancy 30 AND factual 55 on a live chat" />
   <img src="docs/screenshots/jev-off.png" width="420" alt="Jev's eyes closed: the raw firehose, filters hidden" />
 </p>
 
-*Left: both sliders active on a live 25k-viewer chat — the surviving messages
-passed relevancy ≥30 AND factual ≥55, chips showing the binding dimension
-(`f72` on "its slow", a verifiable stream report). Right: the Judge's eyes are
-closed — greyscale coin, no filter rows, every message flowing through.*
+*Left: both sliders active on a live [twitch.tv/jynxzi](https://twitch.tv/jynxzi)
+chat — 97 messages judged, four survived relevancy ≥30 AND factual ≥55, chips
+showing the binding dimension (`f70` on "I gifted 10!!!!", a verifiable claim;
+`r67` on a FOV critique). Right: the Judge's eyes are closed — greyscale coin,
+no filter rows, the raw firehose of `f0` emote spam flowing straight through.*
 
 ## Judging against your voice
 

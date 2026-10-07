@@ -35,6 +35,9 @@ body { display: flex; flex-direction: column; }
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   position: relative;
+  /* Above #controls/#tagbar (their backdrop-filters make sibling stacking
+     contexts) so the Jev coin's overhang is never cut off by the filter rows */
+  z-index: 5;
 }
 
 /* The Jev Judge coin: centered in the header, overhanging below it. Eyes open
@@ -54,7 +57,9 @@ body { display: flex; flex-direction: column; }
   z-index: 6;
   border: 2px solid var(--accent);
   background: #0e0e12;
-  box-shadow: 0 0 16px rgba(124, 92, 255, 0.55), 0 4px 14px rgba(0, 0, 0, 0.6);
+  /* deep drop shadow sells the coin floating above the filter rows */
+  box-shadow: 0 0 16px rgba(124, 92, 255, 0.55), 0 6px 14px rgba(0, 0, 0, 0.85),
+    0 14px 28px rgba(0, 0, 0, 0.55);
   transition: border-color 0.25s, box-shadow 0.25s;
 }
 #jev-toggle img, #jev-toggle video {
@@ -68,7 +73,10 @@ body { display: flex; flex-direction: column; }
   transform-origin: 50% 22%;
 }
 #jev-toggle video.hidden { display: none; }
-#jev-toggle.off { border-color: var(--border); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); }
+#jev-toggle.off {
+  border-color: var(--border);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.85), 0 14px 28px rgba(0, 0, 0, 0.55);
+}
 #jev-toggle.off img { filter: grayscale(1) brightness(0.6); }
 #jev-toggle:hover { border-color: var(--accent); }
 
@@ -358,6 +366,7 @@ body.show-timestamps .msg .time { display: inline; }
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 20; /* above the raised #topbar */
 }
 #overlay.hidden { display: none; }
 #panel {
@@ -411,7 +420,7 @@ body.show-timestamps .msg .time { display: inline; }
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
+  z-index: 20; /* above the raised #topbar */
 }
 #user-overlay.hidden { display: none; }
 #user-card {
