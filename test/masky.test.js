@@ -231,6 +231,62 @@ test("setStreamIdentity sends a community owner and category, and clears with nu
   assert.deepEqual(bodies[1], { avatarId: null });
 });
 
+test("lookupUserAvatar answers from the public mirror without touching the API", async () => {
+  const calls = [];
+  const client = new MaskyClient({
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, opts });
+      assert.match(url, /firestore\.googleapis\.com\/.+\/streamIdentities\/chatfan\?key=/);
+      return jsonResponse({
+        fields: {
+          userId: { stringValue: "twitch:42" },
+          avatarId: { stringValue: "chosen" },
+          displayName: { stringValue: "StreamMe" },
+          imageUrl: { stringValue: "https://cdn/still.png" },
+          voiceId: { stringValue: "v2" },
+        },
+      });
+    },
+  });
+  const res = await client.lookupUserAvatar("mky_t", "ChatFan");
+  assert.deepEqual(res, {
+    ownerUserId: "twitch:42",
+    avatarId: "chosen",
+    name: "StreamMe",
+    imageUrl: "https://cdn/still.png",
+  });
+  // one unauthenticated Firestore read, zero Masky API calls
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts, undefined);
+});
+
+test("lookupUserAvatar falls back to the API when the mirror misses or is unvoiced", async () => {
+  const lookupBody = {
+    found: true,
+    owner: {},
+    avatars: [{ avatarId: "self", avatarOwnerUserId: "u", isDefaultAvatar: true, voiceId: "v1", displayName: "Me" }],
+  };
+  const route = (mirrorResponse) => async (url) =>
+    url.includes("firestore.googleapis.com") ? mirrorResponse : jsonResponse(lookupBody);
+  // mirror doc absent (404) -> API answers
+  let res = await new MaskyClient({ fetchImpl: route(jsonResponse({ error: "not found" }, 404)) })
+    .lookupUserAvatar("t", "someone");
+  assert.equal(res.avatarId, "self");
+  // mirror doc present but voiceless -> can't speak, API decides
+  res = await new MaskyClient({
+    fetchImpl: route(jsonResponse({ fields: { userId: { stringValue: "u" }, avatarId: { stringValue: "mute" } } })),
+  }).lookupUserAvatar("t", "someone");
+  assert.equal(res.avatarId, "self");
+  // mirror read throws (offline, DNS) -> never fatal
+  res = await new MaskyClient({
+    fetchImpl: async (url) => {
+      if (url.includes("firestore.googleapis.com")) throw new Error("ECONNRESET");
+      return jsonResponse(lookupBody);
+    },
+  }).lookupUserAvatar("t", "someone");
+  assert.equal(res.avatarId, "self");
+});
+
 test("listCommunityAvatars treats a missing endpoint as unavailable, not an empty category", async () => {
   const missing = new MaskyClient({
     fetchImpl: async () => jsonResponse({ error: "not found" }, 404),

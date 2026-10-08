@@ -7,6 +7,16 @@
 // flow (scope `generate`).
 const BASE = "https://masky.ai/api";
 
+// Public stream-identity mirror (masky.ai utils/devAvatars.js writes it,
+// masky_auth rules make it world-readable): streamIdentities/{twitchLogin}
+// holds the avatar a chatter chose to represent them on stream overlays.
+// One unauthenticated Firestore REST read (~50-100ms) instead of an authed
+// Lambda round-trip per chatter. The API key is Masky's public web key —
+// it only names the project; rules are the gate.
+const STREAM_IDENTITY_URL =
+  "https://firestore.googleapis.com/v1/projects/maskydotnet/databases/(default)/documents/streamIdentities/";
+const FIRESTORE_WEB_KEY = "AIzaSyBxDknJ0YcbfGXcrj9aoqyW5UMQm4OhcdI";
+
 // Server truth (utils/pricing.js + avatarSpeak.js on masky.ai): speech is
 // estimated at 15 chars/second and talking-head video bills flat + per
 // second. Used to turn a credit balance into "minutes of Jev talking".
@@ -220,6 +230,20 @@ class MaskyClient {
   async lookupUserAvatar(token, username) {
     const user = String(username || "").trim().toLowerCase();
     if (!user) return null;
+    // Fast path: a chatter who explicitly set a stream identity has a public
+    // mirror doc keyed by their Twitch login. A voiced hit answers without
+    // touching the authed API; a miss or unvoiced hit falls through to the
+    // full lookup (most Masky users never set one — their self-avatar only
+    // exists in the API response).
+    const identity = await this.fetchStreamIdentity(user);
+    if (identity && identity.voiceId && identity.ownerUserId && identity.avatarId) {
+      return {
+        ownerUserId: identity.ownerUserId,
+        avatarId: identity.avatarId,
+        name: identity.name || user,
+        imageUrl: identity.imageUrl || null,
+      };
+    }
     let data;
     try {
       data = await this.request("GET", `/avatars/lookup?user=${encodeURIComponent(user)}`, { token });
@@ -242,6 +266,37 @@ class MaskyClient {
       name: pick.displayName || user,
       imageUrl: (pick.isStreamDefault && pick.streamImageUrl) || null,
     };
+  }
+
+  /**
+   * Read a chatter's public stream-identity mirror doc — no token, no Masky
+   * API. Null on miss or any error (callers fall back to the API lookup).
+   * `imageUrl` is the explicitly chosen still (null = avatar's primary at
+   * render time); `avatarImageUrl` is a snapshot of that primary, for
+   * image-only consumers like the chat canvas that shouldn't pin a possibly
+   * stale still on speak calls.
+   */
+  async fetchStreamIdentity(username) {
+    const user = String(username || "").trim().toLowerCase();
+    if (!user) return null;
+    try {
+      const res = await this.fetch(
+        `${STREAM_IDENTITY_URL}${encodeURIComponent(user)}?key=${FIRESTORE_WEB_KEY}`,
+      );
+      if (!res.ok) return null;
+      const fields = (await res.json()).fields || {};
+      const str = (k) => fields[k]?.stringValue || null;
+      return {
+        ownerUserId: str("userId"),
+        avatarId: str("avatarId"),
+        name: str("displayName"),
+        imageUrl: str("imageUrl"),
+        avatarImageUrl: str("avatarImageUrl"),
+        voiceId: str("voiceId"),
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**
