@@ -287,23 +287,95 @@ test("lookupUserAvatar falls back to the API when the mirror misses or is unvoic
   assert.equal(res.avatarId, "self");
 });
 
-test("listCommunityAvatars treats a missing endpoint as unavailable, not an empty category", async () => {
-  const missing = new MaskyClient({
-    fetchImpl: async () => jsonResponse({ error: "not found" }, 404),
-  });
-  assert.deepEqual(await missing.listCommunityAvatars("t", "Path of Exile"), { avatars: [], unavailable: true });
+test("listCommunityAvatars reads the public streamCategories mirror", async () => {
+  const calls = [];
   const client = new MaskyClient({
-    fetchImpl: async (url) => {
-      assert.match(url, /category=Path%20of%20Exile/);
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, opts });
+      assert.match(url, /firestore\.googleapis\.com\/.+\/streamCategories\/software_and_game_development\?key=/);
       return jsonResponse({
-        avatars: [{ avatarId: "c", avatarOwnerUserId: "twitch:9", displayName: "Exile", avatarImageUrl: "https://img/c.png", voiceId: "v" }],
+        fields: {
+          name: { stringValue: "Software and Game Development" },
+          avatars: {
+            arrayValue: {
+              values: [
+                {
+                  mapValue: {
+                    fields: {
+                      avatarId: { stringValue: "pApb" },
+                      avatarOwnerUserId: { stringValue: "twitch:11867613" },
+                      displayName: { stringValue: "CyberSeth" },
+                      avatarImageUrl: { stringValue: "https://img/c.png" },
+                      voiceId: { stringValue: "v" },
+                    },
+                  },
+                },
+                { mapValue: { fields: { avatarId: { stringValue: "mute" }, avatarOwnerUserId: { stringValue: "twitch:1" } } } },
+                { mapValue: { fields: { displayName: { stringValue: "no id" } } } },
+              ],
+            },
+          },
+        },
       });
     },
   });
-  const listed = await client.listCommunityAvatars("t", "Path of Exile");
-  assert.equal(listed.unavailable, false);
-  assert.equal(listed.avatars[0].name, "Exile");
-  assert.equal(listed.avatars[0].ownerUserId, "twitch:9");
+  const listed = await client.listCommunityAvatars("Software and Game Development");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts, undefined);
+  assert.deepEqual(listed.avatars, [
+    {
+      avatarId: "pApb",
+      ownerUserId: "twitch:11867613",
+      name: "CyberSeth",
+      imageUrl: "https://img/c.png",
+      voiceId: "v",
+    },
+    {
+      avatarId: "mute",
+      ownerUserId: "twitch:1",
+      name: "mute",
+      imageUrl: "",
+      voiceId: null,
+    },
+  ]);
+});
+
+test("listCommunityAvatars treats a missing category doc as empty, and a failed read as an error", async () => {
+  const missing = new MaskyClient({
+    fetchImpl: async (url) => {
+      assert.match(url, /streamCategories\/path_of_exile\?key=/);
+      return jsonResponse({ error: { message: "not found" } }, 404);
+    },
+  });
+  assert.deepEqual(await missing.listCommunityAvatars("Path of Exile"), { avatars: [] });
+  assert.deepEqual(await missing.listCommunityAvatars("   "), { avatars: [] });
+
+  let url = "";
+  const slugged = new MaskyClient({
+    fetchImpl: async (u) => {
+      url = u;
+      return jsonResponse({}, 404);
+    },
+  });
+  await slugged.listCommunityAvatars("a/b.c#d[e]");
+  assert.match(url, /streamCategories\/a_b_c_d_e_\?key=/);
+
+  await assert.rejects(
+    () =>
+      new MaskyClient({
+        fetchImpl: async () => jsonResponse({ error: { message: "denied" } }, 403),
+      }).listCommunityAvatars("Chess"),
+    (err) => err.status === 403 && err.message === "denied",
+  );
+  await assert.rejects(
+    () =>
+      new MaskyClient({
+        fetchImpl: async () => {
+          throw new Error("ECONNRESET");
+        },
+      }).listCommunityAvatars("Chess"),
+    (err) => err.message === "ECONNRESET",
+  );
 });
 
 test("speak forwards the profile language to the endpoint", async () => {

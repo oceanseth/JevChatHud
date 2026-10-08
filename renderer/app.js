@@ -1893,10 +1893,6 @@ chatForm.addEventListener("submit", async (e) => {
 function communityMessage(community) {
   if (!community) return "";
   switch (community.reason) {
-    case "unavailable":
-      return community.gameName
-        ? `Community avatars for ${community.gameName} aren't listed by Masky yet.`
-        : "Community avatars aren't listed by Masky yet.";
     case "no-channel":
       return "Add a Twitch source to see avatars for its game.";
     case "no-twitch":

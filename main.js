@@ -586,7 +586,7 @@ app.whenReady().then(() => {
   // Manage-identity popup: the viewer's own avatars plus community avatars
   // enabled for the watched channel's current game. All Masky calls stay in
   // main so the bearer token never has to be fetched from the renderer.
-  async function loadCommunity(token, channel) {
+  async function loadCommunity(channel) {
     if (!channel) return { channel: "", gameName: "", avatars: [], reason: "no-channel" };
     const tw = settings.get().twitch;
     if (!tw.accessToken) return { channel, gameName: "", avatars: [], reason: "no-twitch" };
@@ -597,13 +597,8 @@ app.whenReady().then(() => {
       return { channel, gameName: "", avatars: [], reason: "category-failed", error: err.message };
     }
     if (!gameName) return { channel, gameName: "", avatars: [], reason: "no-category" };
-    const listed = await maskyClient.listCommunityAvatars(token, gameName);
-    return {
-      channel,
-      gameName,
-      avatars: listed.avatars,
-      reason: listed.unavailable ? "unavailable" : "",
-    };
+    const listed = await maskyClient.listCommunityAvatars(gameName);
+    return { channel, gameName, avatars: listed.avatars, reason: "" };
   }
   ipcMain.handle("identity:load", async () => {
     const token = settings.get().speaker.maskyToken;
@@ -614,7 +609,7 @@ app.whenReady().then(() => {
     const [avatars, streamIdentity, community] = await Promise.all([
       maskyClient.listAvatars(token),
       maskyClient.getStreamIdentity(token),
-      loadCommunity(token, channel),
+      loadCommunity(channel),
     ]);
     return { connected: true, avatars, streamIdentity, community };
   });
