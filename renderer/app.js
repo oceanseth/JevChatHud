@@ -70,6 +70,43 @@ function refilterAll() {
   for (const row of rows.values()) applyFilter(row);
 }
 
+let emoteByName = new Map();
+let emoteGroups = [];
+
+function fillMessageText(el, msg) {
+  el.replaceChildren();
+  const segments = tokenizeMessage(msg.text, msg.emotes, emoteByName);
+  for (const seg of segments) {
+    if (seg.type === "emote") {
+      const img = document.createElement("img");
+      img.className = "emote";
+      img.src = seg.url;
+      img.alt = seg.name;
+      img.title = seg.name;
+      img.referrerPolicy = "no-referrer";
+      img.decoding = "async";
+      img.addEventListener("error", () => img.replaceWith(document.createTextNode(seg.name)));
+      el.append(img);
+    } else {
+      el.append(document.createTextNode(seg.text));
+    }
+  }
+}
+
+function applyEmoteCatalog(catalog) {
+  emoteGroups = catalog?.groups || [];
+  emoteByName = nameMapFromGroups(emoteGroups);
+  for (const row of rows.values()) {
+    if (!row._msg || !row._text) continue;
+    fillMessageText(row._text, row._msg);
+    row._clampChecked = false;
+    row.classList.remove("clampable", "expanded");
+    applyFilter(row);
+  }
+  const pop = document.getElementById("emote-pop");
+  if (pop && !pop.classList.contains("hidden")) renderEmotePicker();
+}
+
 function addMessage(msg) {
   const stick = nearBottom();
   const row = document.createElement("div");
@@ -96,9 +133,11 @@ function addMessage(msg) {
   row._userRef = { platform: msg.source.type, name: msg.user.name };
   const text = document.createElement("span");
   text.className = "text";
-  text.textContent = msg.text;
+  fillMessageText(text, msg);
   text.addEventListener("click", () => toggleExpanded(row));
   body.append(user, text);
+  row._msg = msg;
+  row._text = text;
 
   const badges = document.createElement("span");
   badges.className = "badges";
@@ -1162,7 +1201,9 @@ document.getElementById("panel-close").addEventListener("click", closeSettingsPa
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const identityPopEl = document.getElementById("identity-pop");
-  if (identityPopEl && !identityPopEl.classList.contains("hidden")) identityPopEl.classList.add("hidden");
+  const emotePopEl = document.getElementById("emote-pop");
+  if (emotePopEl && !emotePopEl.classList.contains("hidden")) closeEmotePicker();
+  else if (identityPopEl && !identityPopEl.classList.contains("hidden")) identityPopEl.classList.add("hidden");
   else if (!userOverlay.classList.contains("hidden")) closeUserProfile();
   else if (!overlay.classList.contains("hidden")) closeSettingsPanel();
 });
@@ -1945,6 +1986,7 @@ async function saveIdentity(avatar, imageUrl) {
 }
 
 identityBtn.addEventListener("click", () => {
+  closeEmotePicker();
   if (identityPop.classList.contains("hidden")) openIdentity();
   else identityPop.classList.add("hidden");
 });
@@ -1962,10 +2004,91 @@ idClear.addEventListener("click", async () => {
   }
 });
 document.addEventListener("mousedown", (e) => {
-  if (identityPop.classList.contains("hidden")) return;
-  if (identityPop.contains(e.target) || identityBtn.contains(e.target)) return;
-  identityPop.classList.add("hidden");
+  if (!identityPop.classList.contains("hidden")) {
+    if (!identityPop.contains(e.target) && !identityBtn.contains(e.target)) {
+      identityPop.classList.add("hidden");
+    }
+  }
+  if (!emotePop.classList.contains("hidden")) {
+    if (!emotePop.contains(e.target) && !emoteBtn.contains(e.target)) closeEmotePicker();
+  }
 });
+
+const emoteBtn = document.getElementById("emote-btn");
+const emotePop = document.getElementById("emote-pop");
+const emoteSearch = document.getElementById("emote-search");
+const emoteGroupsEl = document.getElementById("emote-groups");
+const emoteClose = document.getElementById("emote-close");
+
+function closeEmotePicker() {
+  emotePop.classList.add("hidden");
+  emoteBtn.classList.remove("active");
+}
+
+function openEmotePicker() {
+  identityPop.classList.add("hidden");
+  emotePop.classList.remove("hidden");
+  emoteBtn.classList.add("active");
+  renderEmotePicker();
+  emoteSearch.focus();
+}
+
+function renderEmotePicker() {
+  const q = emoteSearch.value.trim().toLowerCase();
+  emoteGroupsEl.replaceChildren();
+  let shown = 0;
+  for (const group of emoteGroups) {
+    const emotes = (group.emotes || []).filter((e) => !q || String(e.name).toLowerCase().includes(q));
+    if (!emotes.length) continue;
+    const wrap = document.createElement("div");
+    wrap.className = "emote-group";
+    const label = document.createElement("div");
+    label.className = "emote-group-label";
+    label.textContent = group.label;
+    const grid = document.createElement("div");
+    grid.className = "emote-grid";
+    for (const em of emotes) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "emote-pick";
+      btn.title = em.name;
+      const img = document.createElement("img");
+      img.src = em.url;
+      img.alt = em.name;
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      btn.append(img);
+      btn.addEventListener("click", () => pickEmote(em.name));
+      grid.append(btn);
+      shown += 1;
+    }
+    wrap.append(label, grid);
+    emoteGroupsEl.append(wrap);
+  }
+  if (!shown) {
+    const empty = document.createElement("div");
+    empty.className = "emote-empty";
+    empty.textContent = emoteGroups.length ? "No emotes match." : "Loading emotes…";
+    emoteGroupsEl.append(empty);
+  }
+}
+
+function pickEmote(name) {
+  const start = chatInput.selectionStart ?? chatInput.value.length;
+  const end = chatInput.selectionEnd ?? start;
+  const next = insertEmoteName(chatInput.value, name, start, end);
+  chatInput.value = next.value;
+  chatInput.focus();
+  chatInput.setSelectionRange(next.caret, next.caret);
+}
+
+emoteBtn.addEventListener("click", () => {
+  if (emotePop.classList.contains("hidden")) openEmotePicker();
+  else closeEmotePicker();
+});
+emoteClose.addEventListener("click", closeEmotePicker);
+emoteSearch.addEventListener("input", renderEmotePicker);
+hud.onEmotes(applyEmoteCatalog);
 
 // ---------- init ----------
 
@@ -1989,6 +2112,11 @@ document.addEventListener("mousedown", (e) => {
     twitchAccount = { connected: false };
   }
   renderCompose();
+  try {
+    applyEmoteCatalog(await hud.emotesGet());
+  } catch {
+    applyEmoteCatalog({ groups: [] });
+  }
   // Resume listening if the mic was on when the app last closed.
   if (settings.mic?.enabled) {
     micListening = false;

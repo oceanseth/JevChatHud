@@ -121,11 +121,26 @@
         <p class="section-note block">Channel-point redemptions will show up here.</p>
       </div>
     </div>
+    <div id="emote-pop" class="hidden" role="dialog" aria-label="Emotes">
+      <div class="emote-head">
+        <input id="emote-search" type="search" placeholder="Search emotes" autocomplete="off" spellcheck="false" />
+        <button type="button" id="emote-close" title="Close">✕</button>
+      </div>
+      <div id="emote-groups"></div>
+    </div>
     <form id="chat-compose">
       <button type="button" id="identity-btn" title="Manage identity">
         <img src="assets/masky-m.png" alt="" />
       </button>
       <input id="chat-input" maxlength="500" placeholder="Send a message" autocomplete="off" spellcheck="false" />
+      <button type="button" id="emote-btn" title="Emotes" aria-label="Emotes">
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="7.2" cy="8.4" r="1.15" fill="currentColor"/>
+          <circle cx="12.8" cy="8.4" r="1.15" fill="currentColor"/>
+          <path d="M6.6 12.2c1.15 1.7 5.65 1.7 6.8 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
       <button type="submit" id="chat-send">Chat</button>
     </form>
     <div id="chat-error" class="hidden"></div>
@@ -361,6 +376,7 @@
   <audio id="reading-audio"></audio>
 
   <script src="filter.js"></script>
+  <script src="emotes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -20,6 +20,7 @@ const {
   sendChatMessage,
   DeliveryWatch,
 } = require("./src/twitch_auth");
+const { emptyCatalog, loadEmoteCatalog } = require("./src/emote_catalog");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
 // (dock, notifications, userData path stays "jevchathud" via package.json name).
@@ -230,12 +231,15 @@ function syncSpeaker() {
   }
 }
 
+let emotesRefresh = async () => {};
+
 function activateProfile(profileId) {
   const profile = settings.profile(profileId);
   settings.update({ activeProfileId: profile ? profile.id : null });
   judge.reset();
   sources.activate(profile);
   send("profile:activated", profile ? profile.id : null);
+  emotesRefresh();
 }
 
 app.whenReady().then(() => {
@@ -468,6 +472,7 @@ app.whenReady().then(() => {
         if (gen !== twitchLoginGen) return;
         settings.update({ twitch: who });
         send("twitch:status", twitchView());
+        emotesRefresh();
       })
       .catch((err) => {
         if (gen !== twitchLoginGen) return;
@@ -482,6 +487,7 @@ app.whenReady().then(() => {
     });
     const view = twitchView();
     send("twitch:status", view);
+    emotesRefresh();
     return view;
   });
   ipcMain.handle("twitch:send", async (_e, text) => {
@@ -505,6 +511,27 @@ app.whenReady().then(() => {
     );
     return { ...result, channel };
   });
+
+  // 7TV / BTTV / FFZ / Helix catalog for painting names as images and the picker.
+  let emoteCatalog = emptyCatalog();
+  let emoteGen = 0;
+  emotesRefresh = async () => {
+    const gen = ++emoteGen;
+    const channel = activeTwitchChannel(settings.get());
+    const tw = settings.get().twitch || {};
+    try {
+      const catalog = await loadEmoteCatalog({
+        channel,
+        token: tw.accessToken || "",
+      });
+      if (gen !== emoteGen) return;
+      emoteCatalog = catalog;
+      send("emotes:catalog", catalog);
+    } catch {
+      if (gen !== emoteGen) return;
+    }
+  };
+  ipcMain.handle("emotes:get", () => emoteCatalog);
 
   // Manage-identity popup: the viewer's own avatars plus community avatars
   // enabled for the watched channel's current game. All Masky calls stay in
@@ -693,6 +720,7 @@ app.whenReady().then(() => {
   // Resume the last active profile on launch.
   const last = settings.get().activeProfileId;
   if (last) activateProfile(last);
+  else emotesRefresh();
   syncSpeaker();
 
   app.on("activate", () => {
