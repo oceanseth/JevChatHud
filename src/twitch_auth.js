@@ -216,30 +216,72 @@ async function sendChatMessage({ token, broadcasterId, senderId, message, fetchI
  * public — and one that never comes back was accepted by Twitch but silently
  * hidden from the channel (anti-spam shadow-hold), a failure the sender
  * cannot otherwise distinguish from success.
+ *
+ * Twitch often broadcasts the IRC line before Helix's HTTP response reaches
+ * us, so the echo can land on the reader *before* expect() is armed. Recent
+ * reader ids are remembered so that still counts as delivered. A late echo
+ * after the missing timer has already fired also still confirms, so the
+ * composer can correct a false red line (slow IRC, or a reconnect).
  */
 class DeliveryWatch {
-  constructor({ timeoutMs = 10000, setTimeoutImpl = setTimeout, clearTimeoutImpl = clearTimeout } = {}) {
+  constructor({
+    timeoutMs = 30000,
+    echoTtlMs = 60000,
+    setTimeoutImpl = setTimeout,
+    clearTimeoutImpl = clearTimeout,
+    nowImpl = Date.now,
+  } = {}) {
     this.timeoutMs = timeoutMs;
+    this.echoTtlMs = echoTtlMs;
     this.setTimeoutImpl = setTimeoutImpl;
     this.clearTimeoutImpl = clearTimeoutImpl;
+    this.nowImpl = nowImpl;
     this.pending = new Map();
+    this.echoes = new Map();
   }
 
-  /** Call after a successful send; onMissing fires if no echo arrives in time. */
+  prune(now = this.nowImpl()) {
+    for (const [id, at] of this.echoes) {
+      if (now - at > this.echoTtlMs) this.echoes.delete(id);
+    }
+    for (const [id, entry] of this.pending) {
+      if (entry.missingAt && now - entry.missingAt > this.echoTtlMs) {
+        this.pending.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Call after a successful send. Returns true if the public echo already
+   * arrived (caller should treat the send as delivered). Otherwise arms
+   * onMissing for when no echo arrives in time.
+   */
   expect(messageId, info, onMissing) {
-    if (!messageId) return;
+    if (!messageId) return false;
     this.cancel(messageId);
+    this.prune();
+    if (this.echoes.has(messageId)) {
+      this.echoes.delete(messageId);
+      return true;
+    }
     const timer = this.setTimeoutImpl(() => {
-      this.pending.delete(messageId);
+      const entry = this.pending.get(messageId);
+      if (!entry || entry.confirmed) return;
+      entry.missingAt = this.nowImpl();
       onMissing(info);
     }, this.timeoutMs);
-    this.pending.set(messageId, { info, timer });
+    this.pending.set(messageId, { info, timer, confirmed: false, missingAt: 0 });
+    return false;
   }
 
   /** Call with every reader message id; returns the send's info on a match. */
   observe(messageId) {
+    if (!messageId) return null;
+    this.echoes.set(messageId, this.nowImpl());
+    this.prune();
     const entry = this.pending.get(messageId);
     if (!entry) return null;
+    entry.confirmed = true;
     this.clearTimeoutImpl(entry.timer);
     this.pending.delete(messageId);
     return entry.info;
