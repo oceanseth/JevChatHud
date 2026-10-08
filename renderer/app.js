@@ -1766,6 +1766,9 @@ const twitchAvatarImg = document.getElementById("twitch-avatar-img");
 
 let twitchAccount = { connected: false };
 let identityState = null;
+// An avatar the user just clicked, before (or instead of) the saved identity.
+let identityPick = null;
+let stillsGen = 0;
 
 function profileTwitchChannel() {
   const profile = (settings?.profiles || []).find((p) => p.id === settings.activeProfileId);
@@ -1957,11 +1960,40 @@ function paintIdentitySelection() {
   }
 }
 
+function canonicalPick(avatar) {
+  const own = (identityState?.avatars || []).find((a) => a.avatarId === avatar.avatarId);
+  if (own) return own;
+  return avatar.community ? avatar : { ...avatar, community: true };
+}
+
+function focusedAvatar(data) {
+  if (identityPick) return identityPick;
+  const id = data?.streamIdentity?.avatarId;
+  if (!id) return null;
+  const own = (data.avatars || []).find((a) => a.avatarId === id);
+  if (own) return own;
+  const comm = (data.community?.avatars || []).find((a) => a.avatarId === id);
+  if (comm) return { ...comm, community: true };
+  const si = data.streamIdentity || {};
+  const ownOwner = (data.avatars || [])[0]?.ownerUserId || "";
+  return {
+    avatarId: id,
+    name: si.displayName || id,
+    imageUrl: si.imageUrl || "",
+    voiceId: si.voiceId || "set",
+    ownerUserId: si.avatarOwnerUserId || "",
+    community: !!si.avatarOwnerUserId && si.avatarOwnerUserId !== ownOwner,
+  };
+}
+
 function renderIdentity() {
   const data = identityState;
-  idImages.classList.add("hidden");
-  idImages.replaceChildren();
+  const focus = data?.connected ? focusedAvatar(data) : null;
+  idClear.classList.toggle("hidden", !focus);
   if (!data?.connected) {
+    stillsGen++;
+    idImages.classList.add("hidden");
+    idImages.replaceChildren();
     idOwn.replaceChildren();
     const note = document.createElement("div");
     note.className = "id-empty";
@@ -1989,22 +2021,37 @@ function renderIdentity() {
     idStatus.textContent = "";
     return;
   }
-  fillAvatarGrid(idOwn, data.avatars || [], "No avatars on this Masky account yet.");
+  fillAvatarGrid(idOwn, focus ? [focus] : (data.avatars || []), focus ? "" : "No avatars on this Masky account yet.");
   const community = data.community || {};
   idGame.textContent = community.gameName ? `(${community.gameName})` : "";
-  fillAvatarGrid(idCommunity, community.avatars || [], communityMessage(community), true);
+  const communityAvatars = (community.avatars || []).filter((a) => a.avatarId !== focus?.avatarId);
+  fillAvatarGrid(idCommunity, communityAvatars, communityMessage(community), true);
   const current = data.streamIdentity;
-  idStatus.textContent = current?.avatarId
-    ? `Using ${current.displayName || "this avatar"} on JevChatHud streams.`
-    : "No identity set. Streams fall back to your Masky default.";
+  if (!identityPick) {
+    idStatus.textContent = current?.avatarId
+      ? `Using ${current.displayName || focus?.name || "this avatar"} on JevChatHud streams.`
+      : "No identity set. Streams fall back to your Masky default.";
+  }
+  // A click handler loads stills itself. A saved identity loads them here,
+  // and only shows the row when the avatar has more than one.
+  if (identityPick) return;
+  if (focus) void refreshStills(focus, { autosave: false });
+  else {
+    stillsGen++;
+    idImages.classList.add("hidden");
+    idImages.replaceChildren();
+  }
 }
 
 async function openIdentity() {
+  identityPick = null;
+  stillsGen++;
   identityPop.classList.remove("hidden");
   idStatus.textContent = "Loading…";
   idOwn.replaceChildren();
   idCommunity.replaceChildren();
   idImages.classList.add("hidden");
+  idClear.classList.add("hidden");
   try {
     identityState = await hud.identityLoad();
     renderIdentity();
@@ -2024,47 +2071,66 @@ async function loadStills(avatar) {
   return avatar.imageUrl ? [{ url: avatar.imageUrl, isPrimary: true }] : [];
 }
 
-async function chooseAvatar(avatar) {
-  for (const btn of identityPop.querySelectorAll(".id-avatar")) {
-    btn.classList.toggle("selected", btn.dataset.id === avatar.avatarId);
-  }
-  idStatus.textContent = "";
+function paintStills(avatar, images) {
+  const current = identityState?.streamIdentity;
+  const already = current?.avatarId === avatar.avatarId;
   idImages.classList.remove("hidden");
   idImages.replaceChildren();
-  const pending = document.createElement("div");
-  pending.className = "id-empty";
-  pending.textContent = "Loading stills…";
-  idImages.append(pending);
+  for (const img of images) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "id-still";
+    btn.dataset.url = img.url;
+    if (already && (current.imageUrl ? current.imageUrl === img.url : img.isPrimary)) btn.classList.add("selected");
+    const el = document.createElement("img");
+    el.src = img.url;
+    el.alt = "";
+    btn.append(el);
+    btn.addEventListener("click", () => saveIdentity(avatar, img.url));
+    idImages.append(btn);
+  }
+}
+
+async function refreshStills(avatar, { autosave }) {
+  const gen = ++stillsGen;
+  if (autosave) {
+    idImages.classList.remove("hidden");
+    idImages.replaceChildren();
+    const pending = document.createElement("div");
+    pending.className = "id-empty";
+    pending.textContent = "Loading stills…";
+    idImages.append(pending);
+  }
   try {
     const images = await loadStills(avatar);
-    idImages.replaceChildren();
-    if (!images.length) {
-      idImages.classList.add("hidden");
-      idStatus.textContent = "This avatar has no images yet.";
+    if (gen !== stillsGen) return;
+    if (images.length > 1) {
+      paintStills(avatar, images);
       return;
     }
+    idImages.classList.add("hidden");
+    idImages.replaceChildren();
+    if (!images.length) {
+      if (autosave) idStatus.textContent = "This avatar has no images yet.";
+      return;
+    }
+    if (!autosave) return;
     const current = identityState?.streamIdentity;
-    const already = current?.avatarId === avatar.avatarId;
-    for (const img of images) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "id-still";
-      btn.dataset.url = img.url;
-      if (already && (current.imageUrl ? current.imageUrl === img.url : img.isPrimary)) btn.classList.add("selected");
-      const el = document.createElement("img");
-      el.src = img.url;
-      el.alt = "";
-      btn.append(el);
-      btn.addEventListener("click", () => saveIdentity(avatar, img.url));
-      idImages.append(btn);
-    }
-    if (images.length === 1 && !(already && (!current.imageUrl || current.imageUrl === images[0].url))) {
-      await saveIdentity(avatar, images[0].url);
-    }
+    const same = current?.avatarId === avatar.avatarId && (!current.imageUrl || current.imageUrl === images[0].url);
+    if (!same) await saveIdentity(avatar, images[0].url);
+    else identityPick = null;
   } catch (err) {
+    if (gen !== stillsGen) return;
     idImages.classList.add("hidden");
     idStatus.textContent = err.message || String(err);
   }
+}
+
+async function chooseAvatar(avatar) {
+  identityPick = canonicalPick(avatar);
+  idStatus.textContent = "";
+  renderIdentity();
+  await refreshStills(identityPick, { autosave: true });
 }
 
 async function saveIdentity(avatar, imageUrl) {
@@ -2077,6 +2143,7 @@ async function saveIdentity(avatar, imageUrl) {
   try {
     const saved = await hud.identitySave(body);
     identityState = { ...identityState, streamIdentity: saved.streamIdentity };
+    identityPick = null;
     paintIdentitySelection();
     const name = saved.streamIdentity?.displayName || avatar.name || "this avatar";
     idStatus.textContent = `Using ${name} on JevChatHud streams.`;
@@ -2093,9 +2160,16 @@ identityBtn.addEventListener("click", () => {
 identityClose.addEventListener("click", () => identityPop.classList.add("hidden"));
 idClear.addEventListener("click", async () => {
   if (!identityState?.connected) return;
+  const savedId = identityState?.streamIdentity?.avatarId || "";
+  if (identityPick && identityPick.avatarId !== savedId) {
+    identityPick = null;
+    renderIdentity();
+    return;
+  }
   idStatus.textContent = "Clearing…";
   try {
     const saved = await hud.identitySave({ avatarId: null });
+    identityPick = null;
     identityState = { ...identityState, streamIdentity: saved.streamIdentity };
     renderIdentity();
     idStatus.textContent = "Cleared. Streams fall back to your Masky default.";
