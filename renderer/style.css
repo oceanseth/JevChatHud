@@ -506,14 +506,17 @@ body.show-timestamps .msg .time { display: inline; }
   left: 8px;
   bottom: calc(100% + 4px);
   width: min(340px, calc(100vw - 16px));
-  max-height: min(440px, 62vh);
-  overflow: auto;
+  height: min(520px, 72vh);
+  max-height: min(520px, 72vh);
+  overflow: hidden;
   z-index: 15;
+  display: flex;
+  flex-direction: column;
   background: rgba(19, 19, 28, 0.97);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
-  padding: 10px 12px 12px;
+  padding: 0;
 }
 #identity-pop.hidden { display: none; }
 
@@ -605,11 +608,32 @@ body.show-timestamps .msg .time { display: inline; }
   color: var(--text);
 }
 #identity-pop h3 {
-  margin: 12px 0 6px;
+  margin: 8px 12px 6px;
   font-size: 12px;
   color: var(--text);
 }
-.id-head { display: flex; align-items: center; gap: 8px; }
+.id-mine, .id-community-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 0;
+}
+.id-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 12px 0;
+}
+.id-mine > .section-note.block { flex-shrink: 0; margin: 4px 12px 6px; }
+.id-scroll {
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0 12px 8px;
+}
+.id-community-panel { border-top: 1px solid var(--border); }
+.id-community-panel h3 { flex-shrink: 0; }
 #identity-close {
   margin-left: auto;
   width: 22px;
@@ -648,8 +672,10 @@ body.show-timestamps .msg .time { display: inline; }
 .id-still { width: 52px; height: 52px; padding: 2px; background: transparent; }
 .id-still img { width: 46px; height: 46px; border-radius: 6px; object-fit: cover; display: block; }
 .id-still.selected { border-color: #a970ff; }
-.id-actions { margin-top: 8px; }
-.id-redemptions { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.id-actions { flex-shrink: 0; margin: 0; padding: 0 12px 2px; }
+#id-clear.hidden { display: none; }
+#id-status { flex-shrink: 0; margin: 0 12px 8px; }
+.id-redemptions { flex-shrink: 0; margin: 0; padding: 10px 12px 12px; border-top: 1px solid var(--border); }
 #id-images { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #id-images.hidden { display: none; }
 .id-empty { flex: 1 0 100%; font-size: 11px; color: var(--text-dim); line-height: 1.35; }

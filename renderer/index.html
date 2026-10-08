@@ -101,20 +101,26 @@
 
   <div id="chat-dock">
     <div id="identity-pop" class="hidden" role="dialog" aria-label="Manage identity">
-      <div class="id-panel">
+      <div class="id-panel id-mine">
         <div class="id-head">
           <h2>Manage identity</h2>
           <button type="button" id="identity-close" title="Close">✕</button>
         </div>
         <p class="section-note block">This avatar renders your messages on any stream using JevChatHud.</p>
-        <div id="id-own" class="id-grid"></div>
-        <h3>Community avatars <span id="id-game" class="section-note"></span></h3>
-        <div id="id-community" class="id-grid"></div>
-        <div id="id-images" class="hidden"></div>
+        <div class="id-scroll" id="id-own-scroll">
+          <div id="id-own" class="id-grid"></div>
+          <div id="id-images" class="hidden"></div>
+        </div>
         <div class="id-actions">
-          <button type="button" id="id-clear" class="linklike">clear identity</button>
+          <button type="button" id="id-clear" class="linklike hidden">clear selected</button>
         </div>
         <div id="id-status" class="section-note block"></div>
+      </div>
+      <div class="id-panel id-community-panel">
+        <h3>Community avatars <span id="id-game" class="section-note"></span></h3>
+        <div class="id-scroll" id="id-community-scroll">
+          <div id="id-community" class="id-grid"></div>
+        </div>
       </div>
       <div class="id-panel id-redemptions">
         <h2>Redemptions <span class="soon">coming soon</span></h2>
