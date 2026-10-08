@@ -143,37 +143,77 @@ test("sendChatMessage returns the message id when Twitch accepts it", async () =
   assert.equal(res.messageId, "m1");
 });
 
-test("DeliveryWatch: an observed echo confirms delivery and disarms the timer", () => {
+function fakeTimers() {
   const timers = [];
-  const watch = new DeliveryWatch({
-    timeoutMs: 10,
+  return {
+    timers,
     setTimeoutImpl: (fn) => { timers.push({ fn, cleared: false }); return timers.length - 1; },
     clearTimeoutImpl: (id) => { timers[id].cleared = true; },
-  });
+    fireUncleared() { timers.forEach((t) => !t.cleared && t.fn()); },
+  };
+}
+
+test("DeliveryWatch: an observed echo confirms delivery and disarms the timer", () => {
+  const clock = fakeTimers();
+  const watch = new DeliveryWatch({ timeoutMs: 10, ...clock });
   let missing = null;
   watch.expect("m1", { channel: "chan" }, (info) => { missing = info; });
   // unrelated reader traffic is ignored
   assert.equal(watch.observe("other-id"), null);
   assert.deepEqual(watch.observe("m1"), { channel: "chan" });
-  assert.equal(timers[0].cleared, true);
+  assert.equal(clock.timers[0].cleared, true);
   // a second echo of the same id (shouldn't happen) is a no-op
   assert.equal(watch.observe("m1"), null);
-  timers.forEach((t) => !t.cleared && t.fn());
+  clock.fireUncleared();
+  assert.equal(missing, null);
+});
+
+test("DeliveryWatch: echo that arrived before expect() still counts as delivered", () => {
+  const clock = fakeTimers();
+  const watch = new DeliveryWatch({ timeoutMs: 10, ...clock });
+  let missing = null;
+  // Helix's HTTP response is slower than the IRC broadcast — the canvas
+  // already has the line by the time we know the message id.
+  assert.equal(watch.observe("m-race"), null);
+  assert.equal(watch.expect("m-race", { channel: "chan" }, (info) => { missing = info; }), true);
+  clock.fireUncleared();
   assert.equal(missing, null);
 });
 
 test("DeliveryWatch: no echo in time reports the send as missing, once", () => {
-  const timers = [];
-  const watch = new DeliveryWatch({
-    timeoutMs: 10,
-    setTimeoutImpl: (fn) => { timers.push({ fn, cleared: false }); return timers.length - 1; },
-    clearTimeoutImpl: (id) => { timers[id].cleared = true; },
-  });
+  const clock = fakeTimers();
+  const watch = new DeliveryWatch({ timeoutMs: 10, ...clock });
   const missing = [];
   watch.expect("m2", { channel: "chan" }, (info) => missing.push(info));
   watch.expect("", { channel: "chan" }, () => missing.push("blank")); // no id -> never armed
-  timers.forEach((t) => !t.cleared && t.fn());
+  clock.fireUncleared();
   assert.deepEqual(missing, [{ channel: "chan" }]);
-  // after firing, a late echo no longer matches
-  assert.equal(watch.observe("m2"), null);
+});
+
+test("DeliveryWatch: a late echo after the missing verdict still confirms", () => {
+  const clock = fakeTimers();
+  const watch = new DeliveryWatch({ timeoutMs: 10, ...clock });
+  const missing = [];
+  watch.expect("m-late", { channel: "chan" }, (info) => missing.push(info));
+  clock.fireUncleared();
+  assert.deepEqual(missing, [{ channel: "chan" }]);
+  // Slow IRC / reconnect: the line did land. Composer should flip to green.
+  assert.deepEqual(watch.observe("m-late"), { channel: "chan" });
+});
+
+test("DeliveryWatch: a stale echo does not satisfy a later send of the same id", () => {
+  let now = 0;
+  const clock = fakeTimers();
+  const watch = new DeliveryWatch({
+    timeoutMs: 10,
+    echoTtlMs: 50,
+    nowImpl: () => now,
+    ...clock,
+  });
+  watch.observe("m-stale");
+  now = 51;
+  let missing = null;
+  assert.equal(watch.expect("m-stale", { channel: "chan" }, (info) => { missing = info; }), false);
+  clock.fireUncleared();
+  assert.deepEqual(missing, { channel: "chan" });
 });

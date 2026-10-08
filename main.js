@@ -506,9 +506,10 @@ app.whenReady().then(() => {
     // Helix accepting a message is not delivery — anti-spam can hide it from
     // everyone but the sender with no error anywhere. Watch the reader for
     // the public echo and tell the composer which of the two happened.
-    deliveryWatch.expect(result.messageId, { channel }, () =>
+    const already = deliveryWatch.expect(result.messageId, { channel }, () =>
       send("twitch:delivery", { state: "missing", channel, messageId: result.messageId }),
     );
+    if (already) send("twitch:delivery", { state: "delivered", channel, messageId: result.messageId });
     return { ...result, channel };
   });
 
