@@ -15,7 +15,25 @@ const BASE = "https://masky.ai/api";
 // it only names the project; rules are the gate.
 const STREAM_IDENTITY_URL =
   "https://firestore.googleapis.com/v1/projects/maskydotnet/databases/(default)/documents/streamIdentities/";
+// Public category mirror (utils/streamCategories.js on masky.ai rebuilds it
+// whenever an admin saves an avatar's category). One doc per game, world-
+// readable, render-ready — the picker does not call GET /avatars/community.
+const STREAM_CATEGORY_URL =
+  "https://firestore.googleapis.com/v1/projects/maskydotnet/databases/(default)/documents/streamCategories/";
 const FIRESTORE_WEB_KEY = "AIzaSyBxDknJ0YcbfGXcrj9aoqyW5UMQm4OhcdI";
+
+// Must match sanitizeCategoryId in masky.ai utils/communityCategory.js.
+// The streamCategories doc id is that slug.
+function sanitizeCategoryId(name) {
+  return (
+    (name || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[\/.#\[\]]/g, "_")
+      .replace(/\s+/g, "_")
+      .slice(0, 120) || "unnamed"
+  );
+}
 
 // Server truth (utils/pricing.js + avatarSpeak.js on masky.ai): speech is
 // estimated at 15 chars/second and talking-head video bills flat + per
@@ -378,34 +396,57 @@ class MaskyClient {
 
   /**
    * Admin-enabled avatars for a game category (the stream's current game).
-   * 404 means Masky doesn't expose the list yet — the picker says so instead
-   * of pretending the category has no avatars.
+   * One public Firestore read. A missing doc means the category has no
+   * community avatars. Any other failure throws, so a broken read is not
+   * shown as an empty category. `ownerUserId` is the value PUT
+   * /avatars/stream-identity and GET /avatars/{id}/images expect.
    */
-  async listCommunityAvatars(token, category) {
+  async listCommunityAvatars(category) {
     const name = String(category || "").trim();
-    if (!name) return { avatars: [], unavailable: false };
+    if (!name) return { avatars: [] };
+    const id = sanitizeCategoryId(name);
+    let res;
     try {
-      const data = await this.request(
-        "GET",
-        `/avatars/community?category=${encodeURIComponent(name)}`,
-        { token },
+      res = await this.fetch(
+        `${STREAM_CATEGORY_URL}${encodeURIComponent(id)}?key=${FIRESTORE_WEB_KEY}`,
       );
-      const list = Array.isArray(data.avatars) ? data.avatars : [];
-      return {
-        avatars: list.map((a) => ({
-          avatarId: a.avatarId || a.id,
-          ownerUserId: a.avatarOwnerUserId || a.ownerUserId || "",
-          name: a.displayName || a.avatarName || a.avatarId,
-          imageUrl: a.avatarImageUrl || a.imageUrl || "",
-          voiceId: a.voiceId || a.humeVoiceId || null,
-        })),
-        unavailable: false,
-      };
     } catch (err) {
-      if (err.status === 404) return { avatars: [], unavailable: true };
-      throw err;
+      throw new MaskyError(err.message || "community avatars unavailable");
     }
+    if (res.status === 404) return { avatars: [] };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = data.error?.message || data.error || data.message;
+      throw new MaskyError(typeof detail === "string" ? detail : `masky ${res.status}`, {
+        status: res.status,
+      });
+    }
+    const values = data.fields?.avatars?.arrayValue?.values || [];
+    const avatars = [];
+    for (const entry of values) {
+      const fields = entry?.mapValue?.fields || {};
+      const str = (k) => fields[k]?.stringValue || "";
+      const avatarId = str("avatarId");
+      if (!avatarId) continue;
+      avatars.push({
+        avatarId,
+        ownerUserId: str("avatarOwnerUserId"),
+        name: str("displayName") || avatarId,
+        imageUrl: str("avatarImageUrl"),
+        voiceId: str("voiceId") || null,
+      });
+    }
+    return { avatars };
   }
 }
 
-module.exports = { MaskyClient, MaskyError, speakableLine, lineCost, talkingMinutes, PRICING, QUALITY_TIERS };
+module.exports = {
+  MaskyClient,
+  MaskyError,
+  speakableLine,
+  lineCost,
+  talkingMinutes,
+  PRICING,
+  QUALITY_TIERS,
+  sanitizeCategoryId,
+};
