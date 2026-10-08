@@ -119,6 +119,9 @@ class MaskyClient {
       avatarId: a.avatarId || a.id,
       ownerUserId: a.avatarOwnerUserId || a.ownerUserId,
       name: a.displayName || a.avatarName || a.avatarId,
+      imageUrl: a.avatarImageUrl || "",
+      // null voice = the avatar can't speak; the identity picker greys those out
+      voiceId: a.voiceId || a.humeVoiceId || null,
     }));
   }
 
@@ -260,6 +263,89 @@ class MaskyClient {
       first.avatarOwnerUserId ||
       null
     );
+  }
+
+  /**
+   * The caller's saved stream identity (which avatar + still speaks for them
+   * on any JevChatHud). Null when unset or the endpoint isn't deployed.
+   */
+  async getStreamIdentity(token) {
+    try {
+      const data = await this.request("GET", "/avatars/stream-identity", { token });
+      return data.streamIdentity || null;
+    } catch (err) {
+      if (err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Still images the user can pin for an avatar. `ownerUserId` is required
+   * for someone else's (community) avatar; omitted, the API uses the caller.
+   */
+  async listAvatarImages(token, avatarId, ownerUserId) {
+    const q = ownerUserId ? `?avatarOwnerUserId=${encodeURIComponent(ownerUserId)}` : "";
+    const data = await this.request(
+      "GET",
+      `/avatars/${encodeURIComponent(avatarId)}/images${q}`,
+      { token },
+    );
+    const images = Array.isArray(data.images) ? data.images : [];
+    return {
+      primary: data.primary || "",
+      images: images.map((img) => ({
+        url: img.url,
+        assetId: img.assetId || null,
+        isPrimary: !!img.isPrimary,
+      })),
+    };
+  }
+
+  /**
+   * Save (avatarId set) or clear (avatarId null) the stream identity.
+   * `avatarOwnerUserId` is sent for a community avatar the caller does not
+   * own — Masky accepts that only once the stream-identity write allows
+   * admin-enabled category avatars. `category` is the stream's game, so the
+   * server can check the avatar is actually enabled for it.
+   */
+  async setStreamIdentity(token, { avatarId, imageUrl, avatarOwnerUserId, category } = {}) {
+    const body = { avatarId: avatarId || null };
+    if (imageUrl) body.imageUrl = imageUrl;
+    if (avatarOwnerUserId) body.avatarOwnerUserId = avatarOwnerUserId;
+    if (category) body.category = category;
+    const data = await this.request("PUT", "/avatars/stream-identity", { token, body });
+    return data.streamIdentity || null;
+  }
+
+  /**
+   * Admin-enabled avatars for a game category (the stream's current game).
+   * 404 means Masky doesn't expose the list yet — the picker says so instead
+   * of pretending the category has no avatars.
+   */
+  async listCommunityAvatars(token, category) {
+    const name = String(category || "").trim();
+    if (!name) return { avatars: [], unavailable: false };
+    try {
+      const data = await this.request(
+        "GET",
+        `/avatars/community?category=${encodeURIComponent(name)}`,
+        { token },
+      );
+      const list = Array.isArray(data.avatars) ? data.avatars : [];
+      return {
+        avatars: list.map((a) => ({
+          avatarId: a.avatarId || a.id,
+          ownerUserId: a.avatarOwnerUserId || a.ownerUserId || "",
+          name: a.displayName || a.avatarName || a.avatarId,
+          imageUrl: a.avatarImageUrl || a.imageUrl || "",
+          voiceId: a.voiceId || a.humeVoiceId || null,
+        })),
+        unavailable: false,
+      };
+    } catch (err) {
+      if (err.status === 404) return { avatars: [], unavailable: true };
+      throw err;
+    }
   }
 }
 

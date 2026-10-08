@@ -518,6 +518,7 @@ profileSelect.addEventListener("change", async () => {
   clearFeed();
   await hud.activateProfile(profileSelect.value || null);
   settings = await hud.getSettings();
+  renderCompose();
 });
 
 // Moving either slider is pure display policy: re-threshold and re-render the
@@ -1118,7 +1119,7 @@ for (const btn of document.querySelectorAll("#add-source-row .add-source")) {
   });
 }
 
-function openSettingsPanel({ focusSources = false, focusMic = false } = {}) {
+function openSettingsPanel({ focusSources = false, focusMic = false, focusTwitch = false } = {}) {
   apiKeyInput.value = settings.typesafeApiKey || "";
   modelInput.value = settings.model || "jev-latest";
   const a = settings.appearance || {};
@@ -1131,6 +1132,7 @@ function openSettingsPanel({ focusSources = false, focusMic = false } = {}) {
   renderSttSetup();
   micTestResult.textContent = "";
   renderSpeakerUI();
+  renderTwitch();
   const active = settings.profiles.find((p) => p.id === settings.activeProfileId);
   renderEditProfileSelect(active?.id || "");
   loadProfileIntoEditor(active || null);
@@ -1144,6 +1146,7 @@ function openSettingsPanel({ focusSources = false, focusMic = false } = {}) {
     void sttSetupEl.offsetWidth; // restart the animation on repeat opens
     sttSetupEl.classList.add("flash");
   }
+  if (focusTwitch) document.getElementById("twitch-heading").scrollIntoView({ block: "start" });
 }
 
 document.getElementById("settings-btn").addEventListener("click", () => openSettingsPanel());
@@ -1158,7 +1161,9 @@ document.getElementById("panel-close").addEventListener("click", closeSettingsPa
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!userOverlay.classList.contains("hidden")) closeUserProfile();
+  const identityPopEl = document.getElementById("identity-pop");
+  if (identityPopEl && !identityPopEl.classList.contains("hidden")) identityPopEl.classList.add("hidden");
+  else if (!userOverlay.classList.contains("hidden")) closeUserProfile();
   else if (!overlay.classList.contains("hidden")) closeSettingsPanel();
 });
 
@@ -1589,9 +1594,350 @@ hud.onProfileActivated((id) => {
     settings.activeProfileId = id;
     profileSelect.value = id || "";
     updateEmptyState();
+    renderCompose();
   }
 });
 hud.onOpenSettings(() => openSettingsPanel());
+
+// ---------- Twitch chat composer + stream identity ----------
+
+const chatForm = document.getElementById("chat-compose");
+const chatInput = document.getElementById("chat-input");
+const chatSend = document.getElementById("chat-send");
+const chatError = document.getElementById("chat-error");
+const identityBtn = document.getElementById("identity-btn");
+const identityPop = document.getElementById("identity-pop");
+const identityClose = document.getElementById("identity-close");
+const idOwn = document.getElementById("id-own");
+const idCommunity = document.getElementById("id-community");
+const idGame = document.getElementById("id-game");
+const idImages = document.getElementById("id-images");
+const idClear = document.getElementById("id-clear");
+const idStatus = document.getElementById("id-status");
+const twitchLoginBtn = document.getElementById("twitch-login-btn");
+const twitchLogoutBtn = document.getElementById("twitch-logout-btn");
+const twitchConnectRow = document.getElementById("twitch-connect-row");
+const twitchConnectedRow = document.getElementById("twitch-connected-row");
+const twitchStatusEl = document.getElementById("twitch-status");
+const twitchPending = document.getElementById("twitch-pending");
+const twitchConnectedName = document.getElementById("twitch-connected-name");
+const twitchAvatarImg = document.getElementById("twitch-avatar-img");
+
+let twitchAccount = { connected: false };
+let identityState = null;
+
+function profileTwitchChannel() {
+  const profile = (settings?.profiles || []).find((p) => p.id === settings.activeProfileId);
+  const src = (profile?.sources || []).find((s) => s.type === "twitch" && s.channel);
+  return src ? String(src.channel).replace(/^#/, "").trim() : "";
+}
+
+function showChatError(text) {
+  chatError.textContent = text || "";
+  chatError.classList.toggle("hidden", !text);
+}
+
+function renderCompose() {
+  const channel = profileTwitchChannel();
+  chatInput.disabled = !channel;
+  chatSend.disabled = !channel;
+  chatInput.placeholder = channel ? "Send a message" : "Add a Twitch channel to this profile";
+}
+
+function renderTwitch() {
+  const tw = twitchAccount || {};
+  twitchConnectRow.classList.toggle("hidden", !!tw.connected);
+  twitchConnectedRow.classList.toggle("hidden", !tw.connected);
+  if (tw.connected) {
+    twitchConnectedName.textContent = tw.displayName || tw.login || "Twitch";
+    if (tw.profileImageUrl) {
+      twitchAvatarImg.src = tw.profileImageUrl;
+      twitchAvatarImg.classList.remove("hidden");
+    } else {
+      twitchAvatarImg.removeAttribute("src");
+      twitchAvatarImg.classList.add("hidden");
+    }
+  } else {
+    twitchStatusEl.textContent = "not connected";
+  }
+}
+
+twitchLoginBtn.addEventListener("click", async () => {
+  twitchLoginBtn.disabled = true;
+  twitchPending.classList.remove("hidden");
+  twitchPending.textContent = "Opening Twitch…";
+  try {
+    const flow = await hud.twitchLogin();
+    twitchPending.textContent = `Enter ${flow.userCode} on the Twitch page that just opened.`;
+  } catch (err) {
+    twitchLoginBtn.disabled = false;
+    twitchPending.textContent = err.message || String(err);
+  }
+});
+
+twitchLogoutBtn.addEventListener("click", async () => {
+  twitchAccount = await hud.twitchLogout();
+  twitchPending.classList.add("hidden");
+  twitchLoginBtn.disabled = false;
+  renderTwitch();
+  renderCompose();
+});
+
+hud.onTwitchStatus((view) => {
+  twitchAccount = view || { connected: false };
+  twitchLoginBtn.disabled = false;
+  if (twitchAccount.connected) twitchPending.classList.add("hidden");
+  else if (twitchAccount.error) {
+    twitchPending.classList.remove("hidden");
+    twitchPending.textContent = twitchAccount.error;
+  }
+  renderTwitch();
+  renderCompose();
+});
+
+chatForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  if (!profileTwitchChannel()) return;
+  if (!twitchAccount?.connected) {
+    showChatError("Log in with Twitch in Settings to send chat.");
+    openSettingsPanel({ focusTwitch: true });
+    return;
+  }
+  showChatError("");
+  chatSend.disabled = true;
+  try {
+    await hud.twitchSend(text);
+    chatInput.value = "";
+  } catch (err) {
+    showChatError(err.message || String(err));
+  } finally {
+    chatSend.disabled = !profileTwitchChannel();
+    chatInput.focus();
+  }
+});
+
+function communityMessage(community) {
+  if (!community) return "";
+  switch (community.reason) {
+    case "unavailable":
+      return community.gameName
+        ? `Community avatars for ${community.gameName} aren't listed by Masky yet.`
+        : "Community avatars aren't listed by Masky yet.";
+    case "no-channel":
+      return "Add a Twitch source to see avatars for its game.";
+    case "no-twitch":
+      return "Log in with Twitch to load this channel's category.";
+    case "no-category":
+      return "This channel has no game category set.";
+    case "category-failed":
+      return "Couldn't read the channel's category.";
+    default:
+      if (!community.avatars?.length && community.gameName) return `None enabled for ${community.gameName} yet.`;
+      return "";
+  }
+}
+
+function avatarButton(avatar) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "id-avatar";
+  btn.dataset.id = avatar.avatarId;
+  const voiced = !!avatar.voiceId;
+  if (!voiced) {
+    btn.classList.add("no-voice");
+    btn.disabled = true;
+    btn.title = "no voice yet";
+  }
+  if (identityState?.streamIdentity?.avatarId === avatar.avatarId) btn.classList.add("selected");
+  const img = document.createElement("img");
+  img.alt = "";
+  if (avatar.imageUrl) img.src = avatar.imageUrl;
+  const label = document.createElement("span");
+  label.textContent = avatar.name || avatar.avatarId;
+  btn.append(img, label);
+  if (voiced) btn.addEventListener("click", () => chooseAvatar(avatar));
+  return btn;
+}
+
+function fillAvatarGrid(el, avatars, emptyText, community) {
+  el.replaceChildren();
+  if (!avatars.length) {
+    if (!emptyText) return;
+    const note = document.createElement("div");
+    note.className = "id-empty";
+    note.textContent = emptyText;
+    el.append(note);
+    return;
+  }
+  const sorted = [...avatars].sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }),
+  );
+  for (const avatar of sorted) el.append(avatarButton(community ? { ...avatar, community: true } : avatar));
+}
+
+function paintIdentitySelection() {
+  const id = identityState?.streamIdentity?.avatarId || "";
+  const imageUrl = identityState?.streamIdentity?.imageUrl || "";
+  for (const btn of identityPop.querySelectorAll(".id-avatar")) {
+    btn.classList.toggle("selected", btn.dataset.id === id);
+  }
+  for (const btn of idImages.querySelectorAll(".id-still")) {
+    btn.classList.toggle("selected", !!imageUrl && btn.dataset.url === imageUrl);
+  }
+}
+
+function renderIdentity() {
+  const data = identityState;
+  idImages.classList.add("hidden");
+  idImages.replaceChildren();
+  if (!data?.connected) {
+    idOwn.replaceChildren();
+    const note = document.createElement("div");
+    note.className = "id-empty";
+    note.textContent = "Connect Masky to choose the avatar that renders your messages on any JevChatHud stream.";
+    const connect = document.createElement("button");
+    connect.type = "button";
+    connect.className = "primary";
+    connect.textContent = "Connect Masky account";
+    connect.addEventListener("click", async () => {
+      connect.disabled = true;
+      idStatus.textContent = "Waiting for browser login…";
+      try {
+        await hud.speakerLogin();
+        settings = await hud.getSettings();
+        renderMaskyAuth();
+        await openIdentity();
+      } catch (err) {
+        idStatus.textContent = err.message || String(err);
+        connect.disabled = false;
+      }
+    });
+    idOwn.append(note, connect);
+    idGame.textContent = "";
+    fillAvatarGrid(idCommunity, [], "Connect Masky first.");
+    idStatus.textContent = "";
+    return;
+  }
+  fillAvatarGrid(idOwn, data.avatars || [], "No avatars on this Masky account yet.");
+  const community = data.community || {};
+  idGame.textContent = community.gameName ? `(${community.gameName})` : "";
+  fillAvatarGrid(idCommunity, community.avatars || [], communityMessage(community), true);
+  const current = data.streamIdentity;
+  idStatus.textContent = current?.avatarId
+    ? `Using ${current.displayName || "this avatar"} on JevChatHud streams.`
+    : "No identity set. Streams fall back to your Masky default.";
+}
+
+async function openIdentity() {
+  identityPop.classList.remove("hidden");
+  idStatus.textContent = "Loading…";
+  idOwn.replaceChildren();
+  idCommunity.replaceChildren();
+  idImages.classList.add("hidden");
+  try {
+    identityState = await hud.identityLoad();
+    renderIdentity();
+  } catch (err) {
+    idStatus.textContent = err.message || String(err);
+  }
+}
+
+async function loadStills(avatar) {
+  const community = !!(avatar.ownerUserId && avatar.community);
+  try {
+    const listed = await hud.identityImages(avatar.avatarId, community ? avatar.ownerUserId : "");
+    if (listed?.images?.length) return listed.images;
+  } catch (err) {
+    if (!community || !avatar.imageUrl) throw err;
+  }
+  return avatar.imageUrl ? [{ url: avatar.imageUrl, isPrimary: true }] : [];
+}
+
+async function chooseAvatar(avatar) {
+  for (const btn of identityPop.querySelectorAll(".id-avatar")) {
+    btn.classList.toggle("selected", btn.dataset.id === avatar.avatarId);
+  }
+  idStatus.textContent = "";
+  idImages.classList.remove("hidden");
+  idImages.replaceChildren();
+  const pending = document.createElement("div");
+  pending.className = "id-empty";
+  pending.textContent = "Loading stills…";
+  idImages.append(pending);
+  try {
+    const images = await loadStills(avatar);
+    idImages.replaceChildren();
+    if (!images.length) {
+      idImages.classList.add("hidden");
+      idStatus.textContent = "This avatar has no images yet.";
+      return;
+    }
+    const current = identityState?.streamIdentity;
+    const already = current?.avatarId === avatar.avatarId;
+    for (const img of images) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "id-still";
+      btn.dataset.url = img.url;
+      if (already && (current.imageUrl ? current.imageUrl === img.url : img.isPrimary)) btn.classList.add("selected");
+      const el = document.createElement("img");
+      el.src = img.url;
+      el.alt = "";
+      btn.append(el);
+      btn.addEventListener("click", () => saveIdentity(avatar, img.url));
+      idImages.append(btn);
+    }
+    if (images.length === 1 && !(already && (!current.imageUrl || current.imageUrl === images[0].url))) {
+      await saveIdentity(avatar, images[0].url);
+    }
+  } catch (err) {
+    idImages.classList.add("hidden");
+    idStatus.textContent = err.message || String(err);
+  }
+}
+
+async function saveIdentity(avatar, imageUrl) {
+  idStatus.textContent = "Saving…";
+  const body = { avatarId: avatar.avatarId, imageUrl };
+  if (avatar.community) {
+    body.avatarOwnerUserId = avatar.ownerUserId || "";
+    body.category = identityState?.community?.gameName || "";
+  }
+  try {
+    const saved = await hud.identitySave(body);
+    identityState = { ...identityState, streamIdentity: saved.streamIdentity };
+    paintIdentitySelection();
+    const name = saved.streamIdentity?.displayName || avatar.name || "this avatar";
+    idStatus.textContent = `Using ${name} on JevChatHud streams.`;
+  } catch (err) {
+    idStatus.textContent = err.message || String(err);
+  }
+}
+
+identityBtn.addEventListener("click", () => {
+  if (identityPop.classList.contains("hidden")) openIdentity();
+  else identityPop.classList.add("hidden");
+});
+identityClose.addEventListener("click", () => identityPop.classList.add("hidden"));
+idClear.addEventListener("click", async () => {
+  if (!identityState?.connected) return;
+  idStatus.textContent = "Clearing…";
+  try {
+    const saved = await hud.identitySave({ avatarId: null });
+    identityState = { ...identityState, streamIdentity: saved.streamIdentity };
+    renderIdentity();
+    idStatus.textContent = "Cleared. Streams fall back to your Masky default.";
+  } catch (err) {
+    idStatus.textContent = err.message || String(err);
+  }
+});
+document.addEventListener("mousedown", (e) => {
+  if (identityPop.classList.contains("hidden")) return;
+  if (identityPop.contains(e.target) || identityBtn.contains(e.target)) return;
+  identityPop.classList.add("hidden");
+});
 
 // ---------- init ----------
 
@@ -1609,6 +1955,12 @@ hud.onOpenSettings(() => openSettingsPanel());
   applyAppearance(settings.appearance || {});
   renderProfileSelect();
   updateEmptyState();
+  try {
+    twitchAccount = await hud.twitchStatus();
+  } catch {
+    twitchAccount = { connected: false };
+  }
+  renderCompose();
   // Resume listening if the mic was on when the app last closed.
   if (settings.mic?.enabled) {
     micListening = false;

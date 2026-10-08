@@ -42,6 +42,15 @@ const DEFAULTS = {
     timestamps: false, // show HH:MM per message
   },
   alwaysOnTop: false,
+  // Twitch account used to SEND chat from the composer. Separate from the
+  // Masky token (that one pays for renders and stores stream identity).
+  twitch: {
+    accessToken: "",
+    login: "",
+    displayName: "",
+    userId: "",
+    profileImageUrl: "",
+  },
   activeProfileId: null,
   profiles: [],
 };
@@ -56,6 +65,7 @@ class Settings {
       this.data.appearance = { ...DEFAULTS.appearance, ...(raw.appearance || {}) };
       this.data.mic = { ...DEFAULTS.mic, ...(raw.mic || {}) };
       this.data.speaker = { ...DEFAULTS.speaker, ...(raw.speaker || {}) };
+      this.data.twitch = { ...DEFAULTS.twitch, ...(raw.twitch || {}) };
       // v0.5 → v0.6: "see all" became the Jev Judge toggle (inverted), and the
       // "facts only" checkbox became the factual slider. factsOnly meant "the
       // one slider thresholds factuality", which is exactly factual=old

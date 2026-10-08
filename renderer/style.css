@@ -411,6 +411,149 @@ body.show-timestamps .msg .time { display: inline; }
 }
 #statusbar .error { color: var(--red); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Chat composer, sitting on top of the status footer. The bar matches Twitch's
+   message box: purple outline, the Masky mark where Twitch puts the camera. */
+#chat-dock {
+  position: relative;
+  padding: 8px 10px 6px;
+  background: rgba(14, 14, 18, 0.55);
+  border-top: 1px solid var(--border);
+}
+#chat-compose {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid #a970ff;
+  border-radius: 6px;
+  background: rgba(24, 24, 27, 0.92);
+  padding: 3px 6px 3px 4px;
+}
+#chat-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  padding: 6px 2px;
+  outline: none;
+}
+#chat-input::placeholder { color: #6b6b7b; }
+#chat-input:focus { outline: none; }
+#chat-input:disabled { opacity: 0.55; }
+#identity-btn {
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#identity-btn:hover { border: none; background: transparent; }
+#identity-btn img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  transition: transform 0.15s ease;
+}
+#identity-btn:hover img { transform: rotate(-10deg); }
+#chat-send {
+  background: #9147ff;
+  border-color: #9147ff;
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+#chat-send:hover { border-color: #bf94ff; }
+#chat-send:disabled { opacity: 0.6; }
+#chat-error {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--red);
+}
+#chat-error.hidden { display: none; }
+
+#identity-pop {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% + 4px);
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(440px, 62vh);
+  overflow: auto;
+  z-index: 15;
+  background: rgba(19, 19, 28, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  padding: 10px 12px 12px;
+}
+#identity-pop.hidden { display: none; }
+#identity-pop h2 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+#identity-pop h3 {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+.id-head { display: flex; align-items: center; gap: 8px; }
+#identity-close {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+}
+.id-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.id-avatar {
+  width: 76px;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: center;
+}
+.id-avatar img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto 3px;
+  background: #2a2a33;
+}
+.id-avatar span {
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.id-avatar.selected { border-color: #a970ff; background: rgba(145, 71, 255, 0.12); }
+.id-avatar.no-voice { opacity: 0.4; }
+.id-avatar:disabled { cursor: default; }
+.id-still { width: 52px; height: 52px; padding: 2px; background: transparent; }
+.id-still img { width: 46px; height: 46px; border-radius: 6px; object-fit: cover; display: block; }
+.id-still.selected { border-color: #a970ff; }
+.id-actions { margin-top: 8px; }
+.id-redemptions { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+#id-images { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+#id-images.hidden { display: none; }
+.id-empty { flex: 1 0 100%; font-size: 11px; color: var(--text-dim); line-height: 1.35; }
+#twitch-connect-row.hidden,
+#twitch-connected-row.hidden,
+#twitch-pending.hidden,
+#twitch-avatar-img.hidden { display: none; }
+
 /* Settings overlay */
 #overlay {
   position: fixed;
