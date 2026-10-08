@@ -7,6 +7,7 @@
 // are never read aloud on stream, and an empty window skips the reading
 // (no render, no spend).
 const { MaskyClient, MaskyError, talkingMinutes } = require("./masky");
+const { SAYS } = require("./translator");
 
 const INTERVALS_MIN = [1, 5, 10];
 
@@ -24,9 +25,13 @@ class Speaker {
    * @param {(state) => void} opts.onState   see emitState()
    * @param {(err) => void} opts.onError     {code, message}
    * @param {MaskyClient} [opts.client]      injectable for tests
+   * @param {Translator} [opts.translator]   on-device translator (optional)
+   * @param {() => string} [opts.getLanguage] active profile's target language
    */
-  constructor({ getConfig, onPlay, onState, onError, client }) {
+  constructor({ getConfig, onPlay, onState, onError, client, translator, getLanguage }) {
     this.getConfig = getConfig;
+    this.translator = translator || null;
+    this.getLanguage = getLanguage || (() => "");
     this.onPlay = onPlay;
     this.onState = onState;
     this.onError = onError;
@@ -58,6 +63,7 @@ class Speaker {
       platform: msg.source?.type || "",
       text: msg.text,
       relevancy: rel,
+      id: msg.id || null,
       key: msg.id || `${msg.user?.name || ""}:${msg.text}`,
     };
     if (!this.candidate || rel >= this.candidate.relevancy) this.candidate = pick;
@@ -144,7 +150,20 @@ class Speaker {
     this.emitState();
     try {
       const output = cfg.audioOnly ? "audio" : "video";
-      const reading = await this.readingPlan(pick, cfg, verbatim);
+      // Profile language set: the avatar speaks the translated line. Best
+      // effort — a missing translator model or an already-matching language
+      // reads the original, but the language preference is always sent.
+      const lang = String(this.getLanguage() || "").trim();
+      let spokenPick = pick;
+      if (lang && this.translator) {
+        try {
+          const translated = await this.translator.spokenLine(pick.id, pick.text, lang);
+          if (translated) spokenPick = { ...pick, text: translated };
+        } catch {
+          // speak the original
+        }
+      }
+      const reading = await this.readingPlan(spokenPick, cfg, verbatim, lang);
       const { url, line, creditsCharged } = await this.client.speak({
         token: cfg.maskyToken,
         ownerUserId: reading.ownerUserId,
@@ -156,6 +175,7 @@ class Speaker {
         // sent explicitly: it must also override an avatar's own default.
         quality: output === "video" ? (cfg.videoQuality === "medium" ? "medium" : "high") : undefined,
         avatarImageUrl: reading.avatarImageUrl || undefined,
+        language: lang || undefined,
       });
       if (creditsCharged != null && this.balance != null) {
         this.balance = Math.max(0, this.balance - creditsCharged);
@@ -190,8 +210,9 @@ class Speaker {
     }
   }
 
-  compose(pick) {
-    return `${pick.username} says: ${pick.text}`;
+  compose(pick, lang) {
+    const says = (lang && SAYS[lang]) || "says:";
+    return `${pick.username} ${says} ${pick.text}`;
   }
 
   /**
@@ -203,11 +224,11 @@ class Speaker {
    * messages qualify (pick.key); test greetings always use the
    * configured avatar.
    */
-  async readingPlan(pick, cfg, verbatim) {
+  async readingPlan(pick, cfg, verbatim, lang) {
     const fallback = {
       ownerUserId: cfg.avatarOwnerUserId,
       avatarId: cfg.avatarId,
-      text: verbatim ? pick.text : this.compose(pick),
+      text: verbatim ? pick.text : this.compose(pick, lang),
     };
     if (!cfg.readUserAvatars || verbatim || !pick.key) return fallback;
     const own = await this.userAvatar(pick.username, cfg.maskyToken);

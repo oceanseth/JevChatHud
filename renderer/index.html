@@ -331,6 +331,18 @@
           <textarea id="profile-context" rows="3"
             placeholder="I'm speedrunning Elden Ring. Questions about the run and route matter; backseat gaming does not."></textarea>
         </label>
+        <label class="field">Language
+          <select id="profile-language"></select>
+        </label>
+        <div class="section-note block">Chat written in any other language is translated on-device to this
+          one, and avatar readings are spoken in it. Default: show messages as written.</div>
+        <div id="translator-setup" class="hidden">
+          <div class="section-note block" id="translator-note"></div>
+          <div class="row">
+            <button id="translator-install-btn">Download translator model</button>
+            <span id="translator-progress-label" class="section-note"></span>
+          </div>
+        </div>
 
         <h3 id="sources-heading">Sources</h3>
         <div id="sources-list"></div>

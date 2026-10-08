@@ -21,6 +21,8 @@ const {
   DeliveryWatch,
 } = require("./src/twitch_auth");
 const { emptyCatalog, loadEmoteCatalog } = require("./src/emote_catalog");
+const { Translator } = require("./src/translator");
+const { nameMapFromGroups } = require("./renderer/emotes");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
 // (dock, notifications, userData path stays "jevchathud" via package.json name).
@@ -47,6 +49,7 @@ function settingsForClient() {
 
 let sources = null;
 let judge = null;
+let translator = null;
 const deliveryWatch = new DeliveryWatch();
 let userStats = null;
 let transcriber = null;
@@ -233,6 +236,13 @@ function syncSpeaker() {
 
 let emotesRefresh = async () => {};
 
+/** The active profile's chat display/speech language ("" = original). */
+function profileLanguage() {
+  const data = settings.get();
+  const profile = data.profiles.find((p) => p.id === data.activeProfileId);
+  return String(profile?.language || "").trim();
+}
+
 function activateProfile(profileId) {
   const profile = settings.profile(profileId);
   settings.update({ activeProfileId: profile ? profile.id : null });
@@ -240,6 +250,10 @@ function activateProfile(profileId) {
   sources.activate(profile);
   send("profile:activated", profile ? profile.id : null);
   emotesRefresh();
+  // Warm the translator so the first message doesn't pay the model load.
+  if (translator && profileLanguage() && translator.installed()) {
+    translator.ensureLoaded().catch(() => {});
+  }
 }
 
 app.whenReady().then(() => {
@@ -257,6 +271,8 @@ app.whenReady().then(() => {
   settings = new Settings(app.getPath("userData"));
   userStats = new UserStats(app.getPath("userData"));
   transcriber = new Transcriber({ ...(settings.get().mic || {}), userData: app.getPath("userData") });
+  translator = new Translator();
+  translator.onProgress = (p) => send("translate:progress", p);
 
   judge = new Judge({
     getConfig: () => settings.get(),
@@ -298,6 +314,8 @@ app.whenReady().then(() => {
     onPlay: playReading,
     onState: (state) => send("speaker:state", state),
     onError: (err) => send("speaker:error", err),
+    translator,
+    getLanguage: profileLanguage,
   });
 
   sources = new SourceManager({
@@ -314,6 +332,20 @@ app.whenReady().then(() => {
       }
       send("chat:message", msg);
       judge.enqueue(msg);
+      // Profile language set: swap the displayed text to the translation
+      // when it lands. Judging always sees the original; the speaker reuses
+      // this result (memoized per message) at render time.
+      const lang = profileLanguage();
+      if (lang && translator.installed()) {
+        translator
+          .translateMessage(msg, lang)
+          .then((tr) => {
+            if (!tr) return;
+            msg.translation = tr;
+            send("chat:translation", tr);
+          })
+          .catch(() => {});
+      }
     },
     onStatus: (status) => send("source:status", status),
   });
@@ -527,12 +559,29 @@ app.whenReady().then(() => {
       });
       if (gen !== emoteGen) return;
       emoteCatalog = catalog;
+      translator.setEmoteNames(nameMapFromGroups(catalog.groups));
       send("emotes:catalog", catalog);
     } catch {
       if (gen !== emoteGen) return;
     }
   };
   ipcMain.handle("emotes:get", () => emoteCatalog);
+
+  // On-device translator: status drives the settings UI (language list +
+  // install state); install downloads the model once with progress events.
+  ipcMain.handle("translate:status", () => translator.status());
+  let translateInstallBusy = false;
+  ipcMain.handle("translate:install", async () => {
+    if (translateInstallBusy) return translator.status();
+    translateInstallBusy = true;
+    try {
+      return await translator.install();
+    } catch {
+      return translator.status();
+    } finally {
+      translateInstallBusy = false;
+    }
+  });
 
   // Manage-identity popup: the viewer's own avatars plus community avatars
   // enabled for the watched channel's current game. All Masky calls stay in

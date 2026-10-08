@@ -426,3 +426,81 @@ test("read with user avatars: the test greeting never triggers a lookup", async 
   assert.equal(lookups, 0);
   speaker.stop();
 });
+
+test("profile language: the avatar speaks the translation and the endpoint learns the language", async () => {
+  const calls = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      calls.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+  });
+  const translator = {
+    spokenLine: async (id, text, tgt) => (tgt === "es" ? "hola mundo" : null),
+  };
+  const speaker = new Speaker({
+    getConfig: () => ({ ...baseCfg }),
+    onPlay() {},
+    onState() {},
+    onError() {},
+    client,
+    translator,
+    getLanguage: () => "es",
+  });
+  await speaker.render({ username: "a", platform: "twitch", text: "hello world", relevancy: 50, key: "m1", id: "m1" });
+  assert.equal(calls[0].language, "es");
+  // translated text, localized connector
+  assert.equal(calls[0].text, "a dice: hola mundo");
+});
+
+test("a broken translator still sends the language and reads the original", async () => {
+  const calls = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      calls.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+  });
+  const translator = {
+    spokenLine: async () => {
+      throw new Error("model exploded");
+    },
+  };
+  const speaker = new Speaker({
+    getConfig: () => ({ ...baseCfg }),
+    onPlay() {},
+    onState() {},
+    onError() {},
+    client,
+    translator,
+    getLanguage: () => "es",
+  });
+  await speaker.render({ username: "a", platform: "twitch", text: "hello world", relevancy: 50, key: "m1", id: "m1" });
+  assert.equal(calls[0].language, "es");
+  assert.equal(calls[0].text, "a dice: hello world");
+});
+
+test("no profile language: no translation attempt, no language field", async () => {
+  const calls = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      calls.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+  });
+  let asked = false;
+  const translator = { spokenLine: async () => { asked = true; return "nope"; } };
+  const speaker = new Speaker({
+    getConfig: () => ({ ...baseCfg }),
+    onPlay() {},
+    onState() {},
+    onError() {},
+    client,
+    translator,
+    getLanguage: () => "",
+  });
+  await speaker.render({ username: "a", platform: "twitch", text: "hello", relevancy: 50, key: "m1", id: "m1" });
+  assert.equal(asked, false);
+  assert.equal(calls[0].language, undefined);
+  assert.equal(calls[0].text, "a says: hello");
+});

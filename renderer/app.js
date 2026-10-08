@@ -75,7 +75,17 @@ let emoteGroups = [];
 
 function fillMessageText(el, msg) {
   el.replaceChildren();
-  const segments = tokenizeMessage(msg.text, msg.emotes, emoteByName);
+  // A translated message renders main's emote-preserving segments instead of
+  // retokenizing; the marker's tooltip keeps the original text reachable.
+  const tr = msg.translation;
+  if (tr?.segments?.length) {
+    const mark = document.createElement("span");
+    mark.className = "trans-mark";
+    mark.textContent = `⇄${tr.src}`;
+    mark.title = `Translated ${tr.src} → ${tr.tgt}\nOriginal: ${msg.text}`;
+    el.append(mark);
+  }
+  const segments = tr?.segments?.length ? tr.segments : tokenizeMessage(msg.text, msg.emotes, emoteByName);
   for (const seg of segments) {
     if (seg.type === "emote") {
       const img = document.createElement("img");
@@ -1038,7 +1048,85 @@ const modelInput = document.getElementById("model");
 const editProfileSelect = document.getElementById("edit-profile-select");
 const profileNameInput = document.getElementById("profile-name");
 const profileContextInput = document.getElementById("profile-context");
+const profileLanguageSelect = document.getElementById("profile-language");
+const translatorSetup = document.getElementById("translator-setup");
+const translatorNote = document.getElementById("translator-note");
+const translatorInstallBtn = document.getElementById("translator-install-btn");
+const translatorProgressLabel = document.getElementById("translator-progress-label");
 const sourcesList = document.getElementById("sources-list");
+
+// ---------- per-profile language + on-device translator setup ----------
+
+async function initLanguageSelect() {
+  let status;
+  try {
+    status = await hud.translateStatus();
+  } catch {
+    status = { langs: [] };
+  }
+  profileLanguageSelect.replaceChildren();
+  const original = document.createElement("option");
+  original.value = "";
+  original.textContent = "Original (no translation)";
+  profileLanguageSelect.append(original);
+  for (const lang of status.langs || []) {
+    const opt = document.createElement("option");
+    opt.value = lang.code;
+    opt.textContent = lang.label;
+    profileLanguageSelect.append(opt);
+  }
+}
+
+async function updateTranslatorSetup() {
+  if (!profileLanguageSelect.value) {
+    translatorSetup.classList.add("hidden");
+    return;
+  }
+  let st;
+  try {
+    st = await hud.translateStatus();
+  } catch {
+    return;
+  }
+  if (st.state === "ready" || st.state === "installed") {
+    translatorSetup.classList.add("hidden");
+    return;
+  }
+  translatorSetup.classList.remove("hidden");
+  translatorNote.textContent =
+    st.state === "installing"
+      ? "Downloading the on-device translator model…"
+      : st.error
+        ? `Translator install failed: ${st.error}`
+        : `Translation runs on this computer — it needs a one-time model download (~${st.modelMB} MB).`;
+  translatorInstallBtn.disabled = st.state === "installing";
+  translatorInstallBtn.textContent = st.error ? "Retry download" : "Download translator model";
+}
+
+profileLanguageSelect.addEventListener("change", () => {
+  if (editingProfile) {
+    editingProfile.language = profileLanguageSelect.value;
+    scheduleProfileSave();
+  }
+  updateTranslatorSetup();
+});
+
+translatorInstallBtn.addEventListener("click", async () => {
+  translatorInstallBtn.disabled = true;
+  translatorNote.textContent = "Downloading the on-device translator model…";
+  const st = await hud.translateInstall();
+  translatorProgressLabel.textContent = "";
+  translatorInstallBtn.disabled = false;
+  if (st.state === "ready") translatorSetup.classList.add("hidden");
+  else updateTranslatorSetup();
+});
+
+hud.onTranslateProgress((p) => {
+  if (!p?.total) return;
+  const pct = Math.round((p.loaded / p.total) * 100);
+  const file = String(p.file || "model").split("/").pop();
+  translatorProgressLabel.textContent = `${file} ${pct}%`;
+});
 
 const SOURCE_FIELDS = {
   twitch: [{ key: "channel", label: "Channel name", placeholder: "sodapoppin" }],
@@ -1105,11 +1193,13 @@ function renderSources() {
 function loadProfileIntoEditor(profile) {
   editingProfile = profile
     ? JSON.parse(JSON.stringify(profile))
-    : { id: null, name: "", context: "", sources: [] };
+    : { id: null, name: "", context: "", language: "", sources: [] };
   profileNameInput.value = editingProfile.name || "";
   profileContextInput.value = editingProfile.context || "";
+  profileLanguageSelect.value = editingProfile.language || "";
   savedSourcesSig = JSON.stringify(editingProfile.sources || []);
   renderSources();
+  updateTranslatorSetup();
 }
 
 function renderEditProfileSelect(selectedId) {
@@ -1238,6 +1328,7 @@ async function saveProfileNow() {
   profileSaveTimer = null;
   editingProfile.name = profileNameInput.value.trim();
   editingProfile.context = profileContextInput.value;
+  editingProfile.language = profileLanguageSelect.value;
   // Never materialize a profile out of an untouched "(new profile)" form.
   if (!editingProfile.id && !editingProfile.name && !editingProfile.sources.length) return;
   const sig = JSON.stringify(editingProfile.sources || []);
@@ -1623,6 +1714,15 @@ hud.onSpeakerPlayAudio((payload) => {
 
 hud.onMessage(addMessage);
 hud.onJudged(markJudged);
+hud.onTranslation((tr) => {
+  const row = rows.get(tr.id);
+  if (!row || !row._msg || !row._text) return;
+  row._msg.translation = tr;
+  fillMessageText(row._text, row._msg);
+  row._clampChecked = false;
+  row.classList.remove("clampable", "expanded");
+  applyFilter(row);
+});
 hud.onSourceStatus((status) => {
   // Stopped sources drop off the status row rather than lingering as stale chips.
   if (status.state === "stopped") sourceStates.delete(status.sourceId || status.label);
@@ -2106,6 +2206,7 @@ hud.onEmotes(applyEmoteCatalog);
   applyAppearance(settings.appearance || {});
   renderProfileSelect();
   updateEmptyState();
+  await initLanguageSelect();
   try {
     twitchAccount = await hud.twitchStatus();
   } catch {

@@ -26,6 +26,12 @@ session: 45 messages judged for $0.0013.*
 - Each profile carries a **stream context** — a sentence or two about what
   you're doing ("speedrunning Elden Ring; route questions matter, backseating
   doesn't"). Jev judges every message against it.
+- Each profile can pick a **language**. Chat written in any other language is
+  translated to it **on-device** (M2M100 running locally — a one-time ~480 MB
+  model download, no cloud translation) and shown translated with the original
+  on hover; emotes are never translated through. Avatar readings are spoken in
+  that language too, and the Masky speak call carries it. Judging always sees
+  the original text.
 - Messages are batched (~1s) into a single TypeSafe request using the
   [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) pattern:
   per message two Scores (four attention levels → relevancy 0–100, and four

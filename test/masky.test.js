@@ -305,3 +305,18 @@ test("listCommunityAvatars treats a missing endpoint as unavailable, not an empt
   assert.equal(listed.avatars[0].name, "Exile");
   assert.equal(listed.avatars[0].ownerUserId, "twitch:9");
 });
+
+test("speak forwards the profile language to the endpoint", async () => {
+  let body;
+  const client = new MaskyClient({
+    fetchImpl: async (url, opts) => {
+      if (opts.method === "POST") body = JSON.parse(opts.body);
+      return jsonResponse({ generation: { status: "completed", videoUrl: "v", creditsCharged: 0.1 } });
+    },
+  });
+  await client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "hola mundo", output: "video", language: "es" });
+  assert.equal(body.language, "es");
+  // and stays absent when no language is picked
+  await client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "hi", output: "video" });
+  assert.equal("language" in body, false);
+});

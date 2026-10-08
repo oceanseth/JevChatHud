@@ -170,7 +170,7 @@ class MaskyClient {
     }
   }
 
-  async speakOnce({ token, ownerUserId, avatarId, text, quality, output, avatarImageUrl }) {
+  async speakOnce({ token, ownerUserId, avatarId, text, quality, output, avatarImageUrl, language }) {
     const line = speakableLine(text);
     const want = output === "audio" ? "audioUrl" : "videoUrl";
     const created = await this.request("POST", `/avatars/${encodeURIComponent(avatarId)}/speak`, {
@@ -182,6 +182,10 @@ class MaskyClient {
         avatarOwnerUserId: ownerUserId,
         ...(quality ? { quality } : {}),
         ...(avatarImageUrl ? { avatarImageUrl } : {}),
+        // The profile's target language: the text is already translated;
+        // this tells Masky what the line is so personality rewrites and
+        // metadata stay in the right language.
+        ...(language ? { language } : {}),
       },
     });
     // Sync completion (rare: Lambda self-invoke unavailable) returns the
