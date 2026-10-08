@@ -28,6 +28,7 @@ const DEFAULTS = {
     avatarId: "Ev1WizD5smJnxHWJXEHZ", // the Jev Judge avatar
     useOwnAvatar: false, // advanced: render one of the user's own avatars
     audioOnly: false, // render voice only (cheaper) and never show the share window
+    videoQuality: "high", // avatar video renders: "high" (best, slower) | "medium" (fast, good for live chat)
     speakLatest: false, // continuous mode: read the newest message as soon as the last reading ends
     readUserAvatars: false, // chatters who exist on Masky with a voiced avatar read their own messages
     chroma: false, // solid green idle background for OBS chroma key

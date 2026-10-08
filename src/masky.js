@@ -18,6 +18,16 @@ const PRICING = {
   audioPerSecond: 0.0015, // AUDIO_PER_SEC alone (output:"audio" readings)
 };
 
+// Render tiers for video readings. The streamer pays, so the streamer picks:
+// "high" is the slow best-quality renderer, "medium" trades some fidelity for
+// much faster turnaround (better for live chat). Server-side both tiers bill
+// the same flat per-second speech rate today; the per-tier field exists so
+// the settings UI always quotes whatever the rate becomes.
+const QUALITY_TIERS = [
+  { id: "high", perSecond: PRICING.videoPerSecond },
+  { id: "medium", perSecond: PRICING.videoPerSecond },
+];
+
 class MaskyError extends Error {
   constructor(message, { status, code, availableCredits, requiredCredits } = {}) {
     super(message);
@@ -131,8 +141,23 @@ class MaskyClient {
    * {url, line, creditsCharged} with a signed URL (~1h TTL — play it
    * promptly, don't store it). `output` "video" (default, talking head) or
    * "audio" (voice only — ~18x cheaper per second server-side).
+   * `avatarImageUrl` pins the render to one of the avatar's stills (a
+   * chatter's chosen stream-identity image); the server 400s if the still
+   * no longer belongs to the avatar, so a stale pick retries unpinned
+   * rather than losing the reading.
    */
-  async speak({ token, ownerUserId, avatarId, text, quality, output }) {
+  async speak(opts) {
+    try {
+      return await this.speakOnce(opts);
+    } catch (err) {
+      if (opts.avatarImageUrl && err instanceof MaskyError && err.status === 400) {
+        return this.speakOnce({ ...opts, avatarImageUrl: null });
+      }
+      throw err;
+    }
+  }
+
+  async speakOnce({ token, ownerUserId, avatarId, text, quality, output, avatarImageUrl }) {
     const line = speakableLine(text);
     const want = output === "audio" ? "audioUrl" : "videoUrl";
     const created = await this.request("POST", `/avatars/${encodeURIComponent(avatarId)}/speak`, {
@@ -143,6 +168,7 @@ class MaskyClient {
         output: output === "audio" ? "audio" : "video",
         avatarOwnerUserId: ownerUserId,
         ...(quality ? { quality } : {}),
+        ...(avatarImageUrl ? { avatarImageUrl } : {}),
       },
     });
     // Sync completion (rare: Lambda self-invoke unavailable) returns the
@@ -158,8 +184,13 @@ class MaskyClient {
     };
   }
 
-  /** Poll the generation until the wanted media URL is rendered. */
-  async waitForResult(token, generationId, want = "videoUrl", { timeoutMs = 300000, everyMs = 3000 } = {}) {
+  /**
+   * Poll the generation until the wanted media URL is rendered. The charge
+   * lands when the render is requested, so giving up early throws away a
+   * paid clip — the deadline is a last-resort backstop, generous enough
+   * that even the slowest high-quality render of a max-length line lands.
+   */
+  async waitForResult(token, generationId, want = "videoUrl", { timeoutMs = 900000, everyMs = 3000 } = {}) {
     if (!generationId) throw new MaskyError("speak returned no generationId");
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -196,11 +227,17 @@ class MaskyClient {
     if (!data.found) return null;
     const voiced = (data.avatars || []).filter((a) => a.voiceId || a.humeVoiceId);
     if (!voiced.length) return null;
-    const pick = voiced.find((a) => a.isDefaultAvatar) || voiced[0];
+    // A stream identity is the user's explicit "render me as this on
+    // streams" choice (set via masky.ai), so it outranks the self-avatar.
+    const pick =
+      voiced.find((a) => a.isStreamDefault) ||
+      voiced.find((a) => a.isDefaultAvatar) ||
+      voiced[0];
     return {
       ownerUserId: pick.avatarOwnerUserId,
       avatarId: pick.avatarId,
       name: pick.displayName || user,
+      imageUrl: (pick.isStreamDefault && pick.streamImageUrl) || null,
     };
   }
 
@@ -226,4 +263,4 @@ class MaskyClient {
   }
 }
 
-module.exports = { MaskyClient, MaskyError, speakableLine, lineCost, talkingMinutes, PRICING };
+module.exports = { MaskyClient, MaskyError, speakableLine, lineCost, talkingMinutes, PRICING, QUALITY_TIERS };

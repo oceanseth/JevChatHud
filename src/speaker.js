@@ -151,6 +151,11 @@ class Speaker {
         avatarId: reading.avatarId,
         text: reading.text,
         output,
+        // The streamer pays for the render, so their quality pick applies to
+        // every video reading — including other chatters' avatars. Always
+        // sent explicitly: it must also override an avatar's own default.
+        quality: output === "video" ? (cfg.videoQuality === "medium" ? "medium" : "high") : undefined,
+        avatarImageUrl: reading.avatarImageUrl || undefined,
       });
       if (creditsCharged != null && this.balance != null) {
         this.balance = Math.max(0, this.balance - creditsCharged);
@@ -207,7 +212,13 @@ class Speaker {
     if (!cfg.readUserAvatars || verbatim || !pick.key) return fallback;
     const own = await this.userAvatar(pick.username, cfg.maskyToken);
     if (!own) return fallback;
-    return { ownerUserId: own.ownerUserId, avatarId: own.avatarId, text: pick.text };
+    return {
+      ownerUserId: own.ownerUserId,
+      avatarId: own.avatarId,
+      text: pick.text,
+      // The chatter's chosen stream-identity still, when they set one.
+      avatarImageUrl: own.imageUrl || null,
+    };
   }
 
   /**

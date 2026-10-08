@@ -69,6 +69,48 @@ test("speaker keeps the best candidate and never reads toxic messages", () => {
   speaker.stop();
 });
 
+test("video renders carry the streamer's quality pick; audio renders don't", async () => {
+  const calls = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      calls.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+  });
+  const cfg = { ...baseCfg, videoQuality: "medium" };
+  const { speaker } = makeSpeaker({ cfg, client });
+  await speaker.render({ username: "a", platform: "twitch", text: "hi", relevancy: 50, key: "k1" });
+  assert.equal(calls[0].quality, "medium");
+  cfg.videoQuality = undefined; // unset -> explicit high (must override avatar defaults)
+  await speaker.render({ username: "a", platform: "twitch", text: "hi2", relevancy: 50, key: "k2" });
+  assert.equal(calls[1].quality, "high");
+  cfg.audioOnly = true; // quality is a video concept
+  await speaker.render({ username: "a", platform: "twitch", text: "hi3", relevancy: 50, key: "k3" });
+  assert.equal(calls[2].quality, undefined);
+});
+
+test("read-with-user-avatars pins the chatter's stream-identity still on the render", async () => {
+  const calls = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      calls.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+    lookupUserAvatar: async () => ({
+      ownerUserId: "twitch:42",
+      avatarId: "chosen",
+      name: "ChatFan",
+      imageUrl: "https://cdn/still.png",
+    }),
+  });
+  const cfg = { ...baseCfg, readUserAvatars: true };
+  const { speaker } = makeSpeaker({ cfg, client });
+  await speaker.render({ username: "ChatFan", platform: "twitch", text: "my msg", relevancy: 50, key: "k1" });
+  assert.equal(calls[0].avatarId, "chosen");
+  assert.equal(calls[0].avatarImageUrl, "https://cdn/still.png");
+  assert.equal(calls[0].text, "my msg"); // verbatim — the avatar IS the chatter
+});
+
 test("a candidate missing its user name never reads 'undefined says'", () => {
   const { speaker } = makeSpeaker({ cfg: baseCfg, client: fakeClient() });
   speaker.start();

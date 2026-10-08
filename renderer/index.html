@@ -229,6 +229,13 @@
         <label id="audio-only-label" class="check-label" title="Readings render as voice only (much cheaper than video) and play right here in the HUD — the popup window never appears.">
           <input type="checkbox" id="speaker-audio-only" /> audio only — play the voice without the popup window (cheaper)
         </label>
+        <div class="row" id="quality-row" title="Video renders are charged to your Masky credits per second of speech, so the quality is your call: high looks best but a long message can take a minute or two to render; medium renders in seconds — better for keeping up with live chat.">
+          <label id="speaker-quality-label" for="speaker-quality">Avatar quality</label>
+          <select id="speaker-quality">
+            <option value="high">high — best quality, slower renders (0.0265 credits/sec)</option>
+            <option value="medium">medium — fast renders, keeps up with chat (0.0265 credits/sec)</option>
+          </select>
+        </div>
         <label id="speak-latest-label" class="check-label" title="Instead of one reading per interval, Jev reads the newest chat message as soon as the previous reading finishes — skipping a message he already read. Spends credits continuously while chat is active.">
           <input type="checkbox" id="speaker-speak-latest" /> always speak latest message (continuous — ignores the interval)
         </label>

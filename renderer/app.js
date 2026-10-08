@@ -1274,6 +1274,8 @@ const ownAvatarRow = document.getElementById("own-avatar-row");
 const speakerAvatarSelect = document.getElementById("speaker-avatar");
 const createAvatarBtn = document.getElementById("create-avatar-btn");
 const speakerAudioOnly = document.getElementById("speaker-audio-only");
+const qualityRow = document.getElementById("quality-row");
+const speakerQuality = document.getElementById("speaker-quality");
 const speakerSpeakLatest = document.getElementById("speaker-speak-latest");
 const speakerUserAvatars = document.getElementById("speaker-user-avatars");
 const readingAudio = document.getElementById("reading-audio");
@@ -1299,6 +1301,9 @@ function renderSpeakerUI() {
   ownAvatarRow.classList.toggle("hidden", !cfg.useOwnAvatar);
   if (cfg.useOwnAvatar) populateOwnAvatars();
   speakerAudioOnly.checked = !!cfg.audioOnly;
+  // Quality only applies to video renders; audio-only readings hide it.
+  qualityRow.classList.toggle("hidden", !!cfg.audioOnly);
+  speakerQuality.value = cfg.videoQuality === "medium" ? "medium" : "high";
   speakerSpeakLatest.checked = !!cfg.speakLatest;
   speakerUserAvatars.checked = !!cfg.readUserAvatars;
   speakerChroma.checked = !!cfg.chroma;
@@ -1366,7 +1371,11 @@ speakerEnabledCheck.addEventListener("change", async () => {
 });
 
 speakerInterval.addEventListener("change", () => updateSpeaker({ intervalMin: Number(speakerInterval.value) }));
-speakerAudioOnly.addEventListener("change", () => updateSpeaker({ audioOnly: speakerAudioOnly.checked }));
+speakerAudioOnly.addEventListener("change", () => {
+  qualityRow.classList.toggle("hidden", speakerAudioOnly.checked);
+  updateSpeaker({ audioOnly: speakerAudioOnly.checked });
+});
+speakerQuality.addEventListener("change", () => updateSpeaker({ videoQuality: speakerQuality.value }));
 speakerSpeakLatest.addEventListener("change", () => updateSpeaker({ speakLatest: speakerSpeakLatest.checked }));
 speakerUserAvatars.addEventListener("change", () => updateSpeaker({ readUserAvatars: speakerUserAvatars.checked }));
 speakerChroma.addEventListener("change", () => updateSpeaker({ chroma: speakerChroma.checked }));
@@ -1531,9 +1540,24 @@ hud.onSpeakerPlayed(({ username, relevancy, audio }) => {
 
 // Audio-only readings: no popup window — the clip's sound plays through the
 // HUD itself, and main is told when it ends so continuous mode can chain.
+// Like the share window, a render that finishes while a clip is still
+// playing queues behind it instead of cutting it off — paid renders always
+// get heard.
 let audioActive = false;
+const audioQueue = [];
+function playAudioNow({ url }) {
+  audioActive = true;
+  readingAudio.src = url;
+  const p = readingAudio.play();
+  if (p && p.catch) p.catch(() => readingAudioDone());
+}
 function readingAudioDone() {
   if (!audioActive) return;
+  const next = audioQueue.shift();
+  if (next) {
+    playAudioNow(next);
+    return;
+  }
   audioActive = false;
   readingAudio.removeAttribute("src");
   readingAudio.load();
@@ -1541,11 +1565,12 @@ function readingAudioDone() {
 }
 readingAudio.addEventListener("ended", readingAudioDone);
 readingAudio.addEventListener("error", () => readingAudioDone());
-hud.onSpeakerPlayAudio(({ url }) => {
-  audioActive = true;
-  readingAudio.src = url;
-  const p = readingAudio.play();
-  if (p && p.catch) p.catch(() => readingAudioDone());
+hud.onSpeakerPlayAudio((payload) => {
+  if (audioActive) {
+    audioQueue.push(payload);
+    return;
+  }
+  playAudioNow(payload);
 });
 
 // ---------- events from main ----------

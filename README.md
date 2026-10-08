@@ -187,6 +187,12 @@ never read on stream, and an interval with no judged messages is skipped
   ≈18× cheaper per second (≈0.0015 credits/s) — played through the HUD
   itself; the popup window never appears. The balance estimate switches to
   audio-minutes automatically.
+- **Avatar quality.** You're the one paying for renders, so the video
+  quality is your call: **high** looks best but a long message can take a
+  minute or two to render, **medium** renders in seconds and keeps up with
+  live chat. The per-second credit cost of each tier is shown right in the
+  selector. (Hidden while *audio only* is checked — voice renders have one
+  quality.)
 - **Always speak latest message.** Instead of one reading per interval, Jev
   reads the *newest* chat message the moment the previous reading finishes
   (and immediately when a message lands while he's idle). A message is never

@@ -90,7 +90,76 @@ test("lookupUserAvatar prefers the voiced self-avatar and lowercases the query",
   const client = new MaskyClient({ fetchImpl });
   const res = await client.lookupUserAvatar("mky_t", "ChatFan");
   assert.ok(requested.endsWith("/avatars/lookup?user=chatfan"));
-  assert.deepEqual(res, { ownerUserId: "twitch:42", avatarId: "self", name: "ChatFan" });
+  assert.deepEqual(res, { ownerUserId: "twitch:42", avatarId: "self", name: "ChatFan", imageUrl: null });
+});
+
+test("lookupUserAvatar: a stream identity outranks the self-avatar and carries its still", async () => {
+  const client = new MaskyClient({
+    fetchImpl: async () =>
+      jsonResponse({
+        found: true,
+        owner: {},
+        streamIdentity: { avatarId: "chosen" },
+        avatars: [
+          { avatarId: "self", avatarOwnerUserId: "u", isDefaultAvatar: true, voiceId: "v1" },
+          {
+            avatarId: "chosen",
+            avatarOwnerUserId: "u",
+            isDefaultAvatar: false,
+            isStreamDefault: true,
+            streamImageUrl: "https://cdn/still.png",
+            voiceId: "v2",
+            displayName: "StreamMe",
+          },
+        ],
+      }),
+  });
+  const res = await client.lookupUserAvatar("t", "someone");
+  assert.equal(res.avatarId, "chosen");
+  assert.equal(res.imageUrl, "https://cdn/still.png");
+});
+
+test("speak sends quality + avatarImageUrl, and retries without the still on a 400", async () => {
+  const bodies = [];
+  const fetchImpl = async (url, opts) => {
+    if (opts.method === "POST") {
+      const body = JSON.parse(opts.body);
+      bodies.push(body);
+      // the pinned still is stale -> server rejects only the pinned attempt
+      if (body.avatarImageUrl) return jsonResponse({ error: "avatarImageUrl must be a still image URL from this avatar group" }, 400);
+      return jsonResponse({ generationId: "g3", generation: { status: "pending" } });
+    }
+    return jsonResponse({ generation: { status: "video", videoUrl: "https://signed/v.mp4" } });
+  };
+  const client = new MaskyClient({ fetchImpl });
+  const orig = client.waitForResult.bind(client);
+  client.waitForResult = (token, id, want) => orig(token, id, want, { timeoutMs: 2000, everyMs: 1 });
+  const res = await client.speak({
+    token: "mky_t",
+    ownerUserId: "o",
+    avatarId: "a",
+    text: "hi",
+    quality: "medium",
+    avatarImageUrl: "https://cdn/stale.png",
+  });
+  assert.equal(res.url, "https://signed/v.mp4");
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].quality, "medium");
+  assert.equal(bodies[0].avatarImageUrl, "https://cdn/stale.png");
+  assert.equal(bodies[1].quality, "medium"); // the retry drops only the still
+  assert.equal("avatarImageUrl" in bodies[1], false);
+});
+
+test("speak does not retry a 400 that had no still pinned", async () => {
+  let posts = 0;
+  const client = new MaskyClient({
+    fetchImpl: async () => {
+      posts++;
+      return jsonResponse({ error: "Text required" }, 400);
+    },
+  });
+  await assert.rejects(() => client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "x" }));
+  assert.equal(posts, 1);
 });
 
 test("lookupUserAvatar: not found, voiceless, 404, and blank all resolve null", async () => {
