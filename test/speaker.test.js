@@ -111,6 +111,24 @@ test("read-with-user-avatars pins the chatter's stream-identity still on the ren
   assert.equal(calls[0].text, "my msg"); // verbatim — the avatar IS the chatter
 });
 
+test("the settings-pinned still rides own-avatar renders only", async () => {
+  const calls = [];
+  const client = fakeClient({
+    speak: async (args) => {
+      calls.push(args);
+      return { url: "https://signed/v.mp4", line: args.text, creditsCharged: 0.1 };
+    },
+  });
+  const cfg = { ...baseCfg, useOwnAvatar: true, avatarImageUrl: "https://cdn/own-still.png" };
+  const { speaker } = makeSpeaker({ cfg, client });
+  await speaker.render({ username: "a", platform: "twitch", text: "hi", relevancy: 50, key: "k1" });
+  assert.equal(calls[0].avatarImageUrl, "https://cdn/own-still.png");
+  // A stale pin left in config must never be sent for Jev Judge renders.
+  cfg.useOwnAvatar = false;
+  await speaker.render({ username: "a", platform: "twitch", text: "hi2", relevancy: 50, key: "k2" });
+  assert.equal(calls[1].avatarImageUrl, undefined);
+});
+
 test("a candidate missing its user name never reads 'undefined says'", () => {
   const { speaker } = makeSpeaker({ cfg: baseCfg, client: fakeClient() });
   speaker.start();

@@ -177,10 +177,12 @@ never read on stream, and an interval with no judged messages is skipped
   panel shows your Masky identity — avatar, name, and a **logout** button
   that returns you to the connect flow. The default voice is the
   **Jev Judge** avatar on its creator's account; rendering it pays the
-  creator through the mask marketplace. Advanced: check *use my own avatar*
-  to render one of your own Masky avatars instead — or click **create
-  avatar** to jump straight into your masky.ai admin console with the
-  new-avatar dialog already open.
+  creator through the mask marketplace. Check *Use my own avatar instead
+  of Jev Judge* to render one of your own Masky avatars instead — the
+  image shown beside the picker is the still used when rendering, and
+  clicking it lets you pick any of that avatar's images — or click
+  **create avatar** to jump straight into your masky.ai admin console
+  with the new-avatar dialog already open.
 
 <p align="center">
   <img src="docs/screenshots/masky-connected.png" width="420" alt="Settings after connecting: Masky Connected with the account's avatar, name, and a logout button" />

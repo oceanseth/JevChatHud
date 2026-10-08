@@ -287,10 +287,15 @@
         </div>
         <div id="speaker-balance" class="section-note block"></div>
         <label id="own-avatar-label" class="check-label">
-          <input type="checkbox" id="speaker-own-avatar" /> use my own avatar instead of Jev Judge (advanced)
+          <input type="checkbox" id="speaker-own-avatar" /> Use my own avatar instead of Jev Judge
         </label>
         <div class="hidden" id="own-avatar-row">
-          <div class="row"><select id="speaker-avatar"></select></div>
+          <div class="row">
+            <select id="speaker-avatar"></select>
+            <img id="speaker-avatar-still" class="hidden" alt=""
+              title="The image used when rendering — click to pick a different one of this avatar's images" />
+          </div>
+          <div id="avatar-stills" class="hidden"></div>
           <div class="row"><button id="create-avatar-btn" title="Open masky.ai to create a new avatar for your account">create avatar</button></div>
         </div>
         <label id="audio-only-label" class="check-label" title="Readings render as voice only (much cheaper than video) and play right here in the HUD — the popup window never appears.">

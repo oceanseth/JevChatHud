@@ -229,6 +229,10 @@ class Speaker {
       ownerUserId: cfg.avatarOwnerUserId,
       avatarId: cfg.avatarId,
       text: verbatim ? pick.text : this.compose(pick, lang),
+      // The still pinned in settings (click the preview beside the avatar
+      // select). Only meaningful for an own avatar — Jev Judge renders his
+      // default look. A stale pin 400s and the speak call retries unpinned.
+      avatarImageUrl: (cfg.useOwnAvatar && cfg.avatarImageUrl) || null,
     };
     if (!cfg.readUserAvatars || verbatim || !pick.key) return fallback;
     const own = await this.userAvatar(pick.username, cfg.maskyToken);

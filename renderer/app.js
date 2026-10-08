@@ -1409,6 +1409,8 @@ const speakerBalance = document.getElementById("speaker-balance");
 const speakerOwnAvatar = document.getElementById("speaker-own-avatar");
 const ownAvatarRow = document.getElementById("own-avatar-row");
 const speakerAvatarSelect = document.getElementById("speaker-avatar");
+const speakerAvatarStill = document.getElementById("speaker-avatar-still");
+const avatarStillsPanel = document.getElementById("avatar-stills");
 const createAvatarBtn = document.getElementById("create-avatar-btn");
 const speakerAudioOnly = document.getElementById("speaker-audio-only");
 const qualityRow = document.getElementById("quality-row");
@@ -1488,6 +1490,7 @@ async function populateOwnAvatars() {
       opt.value = a.avatarId;
       opt.textContent = a.name;
       opt.dataset.owner = a.ownerUserId;
+      opt.dataset.image = a.imageUrl || "";
       speakerAvatarSelect.append(opt);
     }
     const cfg = speakerCfg();
@@ -1496,7 +1499,81 @@ async function populateOwnAvatars() {
   } catch (err) {
     speakerNote.textContent = `could not list avatars: ${err.message || err}`;
   }
+  renderOwnAvatarStill();
 }
+
+// The preview beside the select: the still that will be used when rendering —
+// the pinned one when set, else the avatar's primary image. Clicking it opens
+// the avatar's full image set to pin a different one.
+function renderOwnAvatarStill() {
+  const cfg = speakerCfg();
+  const opt = speakerAvatarSelect.selectedOptions[0];
+  const src = (cfg.avatarImageUrl || opt?.dataset.image || "").trim();
+  if (src) speakerAvatarStill.src = src;
+  else speakerAvatarStill.removeAttribute("src");
+  speakerAvatarStill.classList.toggle("hidden", !src);
+}
+
+function hideAvatarStills() {
+  avatarStillsPanel.classList.add("hidden");
+  avatarStillsPanel.replaceChildren();
+}
+
+let ownStillsGen = 0;
+async function toggleAvatarStills() {
+  if (!avatarStillsPanel.classList.contains("hidden")) {
+    hideAvatarStills();
+    return;
+  }
+  const opt = speakerAvatarSelect.selectedOptions[0];
+  if (!opt) return;
+  const gen = ++ownStillsGen;
+  avatarStillsPanel.classList.remove("hidden");
+  avatarStillsPanel.replaceChildren();
+  const pending = document.createElement("div");
+  pending.className = "id-empty";
+  pending.textContent = "Loading images…";
+  avatarStillsPanel.append(pending);
+  let images = [];
+  try {
+    const listed = await hud.identityImages(opt.value, "");
+    images = listed?.images || [];
+  } catch (err) {
+    if (gen !== ownStillsGen) return;
+    pending.textContent = `could not list images: ${err.message || err}`;
+    return;
+  }
+  if (gen !== ownStillsGen) return;
+  avatarStillsPanel.replaceChildren();
+  if (!images.length) {
+    const none = document.createElement("div");
+    none.className = "id-empty";
+    none.textContent = "This avatar has no images yet.";
+    avatarStillsPanel.append(none);
+    return;
+  }
+  const pinned = speakerCfg().avatarImageUrl || "";
+  for (const img of images) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "id-still";
+    if (pinned ? pinned === img.url : img.isPrimary) btn.classList.add("selected");
+    const el = document.createElement("img");
+    el.src = img.url;
+    el.alt = "";
+    btn.append(el);
+    btn.addEventListener("click", async () => {
+      await updateSpeaker({ avatarImageUrl: img.url });
+      renderOwnAvatarStill();
+      hideAvatarStills();
+    });
+    avatarStillsPanel.append(btn);
+  }
+}
+
+speakerAvatarStill.addEventListener("click", () => {
+  toggleAvatarStills().catch(() => {});
+});
 
 speakerEnabledCheck.addEventListener("change", async () => {
   const on = speakerEnabledCheck.checked;
@@ -1566,26 +1643,37 @@ maskyLogoutBtn.addEventListener("click", async () => {
 speakerOwnAvatar.addEventListener("change", async () => {
   const own = speakerOwnAvatar.checked;
   ownAvatarRow.classList.toggle("hidden", !own);
+  hideAvatarStills();
   if (!own) {
     await updateSpeaker({
       useOwnAvatar: false,
       avatarOwnerUserId: JEV_AVATAR.ownerUserId,
       avatarId: JEV_AVATAR.avatarId,
+      avatarImageUrl: "",
     });
     return;
   }
+  const prevId = speakerCfg().avatarId;
   await populateOwnAvatars();
   const opt = speakerAvatarSelect.selectedOptions[0];
   if (opt) {
-    await updateSpeaker({ useOwnAvatar: true, avatarOwnerUserId: opt.dataset.owner, avatarId: opt.value });
+    // Re-checking restores the remembered avatar and its pinned still; if
+    // that avatar is gone the select fell back to another one, whose stills
+    // the old pin doesn't belong to.
+    const pin = opt.value === prevId ? speakerCfg().avatarImageUrl || "" : "";
+    await updateSpeaker({ useOwnAvatar: true, avatarOwnerUserId: opt.dataset.owner, avatarId: opt.value, avatarImageUrl: pin });
+    renderOwnAvatarStill();
   }
 });
 
 speakerAvatarSelect.addEventListener("change", async () => {
   const opt = speakerAvatarSelect.selectedOptions[0];
   if (opt) {
-    await updateSpeaker({ useOwnAvatar: true, avatarOwnerUserId: opt.dataset.owner, avatarId: opt.value });
+    // A different avatar's stills don't apply — the pin resets to its primary.
+    await updateSpeaker({ useOwnAvatar: true, avatarOwnerUserId: opt.dataset.owner, avatarId: opt.value, avatarImageUrl: "" });
   }
+  hideAvatarStills();
+  renderOwnAvatarStill();
 });
 
 // Deep-links into the connected account's masky.ai admin console; the #create

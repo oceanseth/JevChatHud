@@ -27,6 +27,7 @@ const DEFAULTS = {
     avatarOwnerUserId: "twitch:11867613", // Jev Judge's creator (default avatar)
     avatarId: "Ev1WizD5smJnxHWJXEHZ", // the Jev Judge avatar
     useOwnAvatar: false, // advanced: render one of the user's own avatars
+    avatarImageUrl: "", // pinned still for the own avatar ("" = the avatar's primary image)
     audioOnly: false, // render voice only (cheaper) and never show the share window
     videoQuality: "high", // avatar video renders: "high" (best, slower) | "medium" (fast, good for live chat)
     speakLatest: false, // continuous mode: read the newest message as soon as the last reading ends
