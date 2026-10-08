@@ -1634,7 +1634,19 @@ function profileTwitchChannel() {
 
 function showChatError(text) {
   chatError.textContent = text || "";
+  chatError.classList.remove("ok");
   chatError.classList.toggle("hidden", !text);
+}
+
+let chatStatusTimer = null;
+function showChatStatus(text) {
+  chatError.textContent = text;
+  chatError.classList.add("ok");
+  chatError.classList.remove("hidden");
+  clearTimeout(chatStatusTimer);
+  chatStatusTimer = setTimeout(() => {
+    if (chatError.classList.contains("ok")) showChatError("");
+  }, 5000);
 }
 
 function renderCompose() {
@@ -1681,6 +1693,22 @@ twitchLogoutBtn.addEventListener("click", async () => {
   twitchLoginBtn.disabled = false;
   renderTwitch();
   renderCompose();
+});
+
+// Ground truth per send: the message either echoed back on the channel's
+// public (anonymous) reader — provably visible to everyone — or Twitch
+// accepted it and then quietly hid it, which no error anywhere reports.
+hud.onTwitchDelivery((d) => {
+  if (d.state === "delivered") {
+    showChatStatus(`Seen in #${d.channel}'s public chat ✓`);
+  } else {
+    showChatError(
+      `Twitch accepted the message but it never appeared in #${d.channel}'s public chat. ` +
+        `Either Twitch is quietly holding this account's messages back in that channel ` +
+        `(new-looking account, or the channel requires verified email/phone or following), ` +
+        `or the HUD's chat reader is disconnected.`,
+    );
+  }
 });
 
 hud.onTwitchStatus((view) => {

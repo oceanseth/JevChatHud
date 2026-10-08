@@ -8,6 +8,7 @@ const {
   pollDeviceToken,
   channelCategory,
   sendChatMessage,
+  DeliveryWatch,
 } = require("../src/twitch_auth");
 
 function jsonResponse(body, status = 200) {
@@ -140,4 +141,39 @@ test("sendChatMessage returns the message id when Twitch accepts it", async () =
     fetchImpl,
   });
   assert.equal(res.messageId, "m1");
+});
+
+test("DeliveryWatch: an observed echo confirms delivery and disarms the timer", () => {
+  const timers = [];
+  const watch = new DeliveryWatch({
+    timeoutMs: 10,
+    setTimeoutImpl: (fn) => { timers.push({ fn, cleared: false }); return timers.length - 1; },
+    clearTimeoutImpl: (id) => { timers[id].cleared = true; },
+  });
+  let missing = null;
+  watch.expect("m1", { channel: "chan" }, (info) => { missing = info; });
+  // unrelated reader traffic is ignored
+  assert.equal(watch.observe("other-id"), null);
+  assert.deepEqual(watch.observe("m1"), { channel: "chan" });
+  assert.equal(timers[0].cleared, true);
+  // a second echo of the same id (shouldn't happen) is a no-op
+  assert.equal(watch.observe("m1"), null);
+  timers.forEach((t) => !t.cleared && t.fn());
+  assert.equal(missing, null);
+});
+
+test("DeliveryWatch: no echo in time reports the send as missing, once", () => {
+  const timers = [];
+  const watch = new DeliveryWatch({
+    timeoutMs: 10,
+    setTimeoutImpl: (fn) => { timers.push({ fn, cleared: false }); return timers.length - 1; },
+    clearTimeoutImpl: (id) => { timers[id].cleared = true; },
+  });
+  const missing = [];
+  watch.expect("m2", { channel: "chan" }, (info) => missing.push(info));
+  watch.expect("", { channel: "chan" }, () => missing.push("blank")); // no id -> never armed
+  timers.forEach((t) => !t.cleared && t.fn());
+  assert.deepEqual(missing, [{ channel: "chan" }]);
+  // after firing, a late echo no longer matches
+  assert.equal(watch.observe("m2"), null);
 });

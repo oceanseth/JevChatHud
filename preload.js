@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld("hud", {
   twitchSend: (text) => ipcRenderer.invoke("twitch:send", text),
   onTwitchPending: on("twitch:pending"),
   onTwitchStatus: on("twitch:status"),
+  onTwitchDelivery: on("twitch:delivery"),
   identityLoad: () => ipcRenderer.invoke("identity:load"),
   identityImages: (avatarId, ownerUserId) => ipcRenderer.invoke("identity:images", { avatarId, ownerUserId }),
   identitySave: (body) => ipcRenderer.invoke("identity:save", body),

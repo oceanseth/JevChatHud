@@ -18,6 +18,7 @@ const {
   channelCategory,
   broadcasterIdFor,
   sendChatMessage,
+  DeliveryWatch,
 } = require("./src/twitch_auth");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
@@ -45,6 +46,7 @@ function settingsForClient() {
 
 let sources = null;
 let judge = null;
+const deliveryWatch = new DeliveryWatch();
 let userStats = null;
 let transcriber = null;
 let speaker = null;
@@ -296,6 +298,11 @@ app.whenReady().then(() => {
 
   sources = new SourceManager({
     onMessage: (msg) => {
+      // A composer send echoing back on the anonymous reader proves the
+      // channel broadcast it publicly — the strongest "it really went
+      // through" signal Twitch offers.
+      const sent = deliveryWatch.observe(msg.id);
+      if (sent) send("twitch:delivery", { state: "delivered", channel: sent.channel, messageId: msg.id });
       userStats.recordMessage(msg);
       awaitingJudgment.set(msg.id, msg);
       if (awaitingJudgment.size > AWAITING_MAX) {
@@ -484,12 +491,19 @@ app.whenReady().then(() => {
     if (!channel) throw new Error("This profile has no Twitch channel");
     const broadcasterId = await broadcasterIdFor(tw.accessToken, channel);
     if (!broadcasterId) throw new Error(`Twitch channel #${channel} was not found`);
-    return sendChatMessage({
+    const result = await sendChatMessage({
       token: tw.accessToken,
       broadcasterId,
       senderId: tw.userId,
       message: text,
     });
+    // Helix accepting a message is not delivery — anti-spam can hide it from
+    // everyone but the sender with no error anywhere. Watch the reader for
+    // the public echo and tell the composer which of the two happened.
+    deliveryWatch.expect(result.messageId, { channel }, () =>
+      send("twitch:delivery", { state: "missing", channel, messageId: result.messageId }),
+    );
+    return { ...result, channel };
   });
 
   // Manage-identity popup: the viewer's own avatars plus community avatars

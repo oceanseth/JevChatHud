@@ -477,6 +477,7 @@ body.show-timestamps .msg .time { display: inline; }
   color: var(--red);
 }
 #chat-error.hidden { display: none; }
+#chat-error.ok { color: var(--green); }
 
 #identity-pop {
   position: absolute;

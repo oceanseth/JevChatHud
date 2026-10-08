@@ -209,9 +209,54 @@ async function sendChatMessage({ token, broadcasterId, senderId, message, fetchI
   return { messageId: row.message_id || "" };
 }
 
+/**
+ * Watches sent messages for their public echo. Helix's message_id is the
+ * same UUID the channel's IRC broadcast carries in its `id` tag, so a sent
+ * message whose id comes back on the HUD's *anonymous* reader was provably
+ * public — and one that never comes back was accepted by Twitch but silently
+ * hidden from the channel (anti-spam shadow-hold), a failure the sender
+ * cannot otherwise distinguish from success.
+ */
+class DeliveryWatch {
+  constructor({ timeoutMs = 10000, setTimeoutImpl = setTimeout, clearTimeoutImpl = clearTimeout } = {}) {
+    this.timeoutMs = timeoutMs;
+    this.setTimeoutImpl = setTimeoutImpl;
+    this.clearTimeoutImpl = clearTimeoutImpl;
+    this.pending = new Map();
+  }
+
+  /** Call after a successful send; onMissing fires if no echo arrives in time. */
+  expect(messageId, info, onMissing) {
+    if (!messageId) return;
+    this.cancel(messageId);
+    const timer = this.setTimeoutImpl(() => {
+      this.pending.delete(messageId);
+      onMissing(info);
+    }, this.timeoutMs);
+    this.pending.set(messageId, { info, timer });
+  }
+
+  /** Call with every reader message id; returns the send's info on a match. */
+  observe(messageId) {
+    const entry = this.pending.get(messageId);
+    if (!entry) return null;
+    this.clearTimeoutImpl(entry.timer);
+    this.pending.delete(messageId);
+    return entry.info;
+  }
+
+  cancel(messageId) {
+    const entry = this.pending.get(messageId);
+    if (!entry) return;
+    this.clearTimeoutImpl(entry.timer);
+    this.pending.delete(messageId);
+  }
+}
+
 module.exports = {
   CLIENT_ID,
   SCOPES,
+  DeliveryWatch,
   activeTwitchChannel,
   publicTwitch,
   startDeviceFlow,
