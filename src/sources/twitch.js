@@ -4,6 +4,7 @@
 // config: { channel: "sodapoppin" }
 const WebSocket = require("ws");
 const crypto = require("crypto");
+const { parseIrcEmotes } = require("../../renderer/emotes");
 
 const GATEWAY = "wss://irc-ws.chat.twitch.tv:443";
 
@@ -85,14 +86,7 @@ function start(config, { onMessage, onStatus }) {
       const colon = paramsRaw.indexOf(" :");
       if (colon < 0) return;
       const text = paramsRaw.slice(colon + 2);
-      const user = tags["display-name"] || prefix.split("!")[0];
-      onMessage({
-        id: tags.id || crypto.randomUUID(),
-        source: { type: "twitch", label: `#${channel}` },
-        user: { name: user, color: tags.color || null },
-        text,
-        ts: Number(tags["tmi-sent-ts"]) || Date.now(),
-      });
+      onMessage(twitchMessage({ tags, prefix, text, channel }));
     }
   }
 
@@ -106,4 +100,16 @@ function start(config, { onMessage, onStatus }) {
   };
 }
 
-module.exports = { start, parseTags };
+function twitchMessage({ tags, prefix, text, channel }) {
+  const user = tags["display-name"] || prefix.split("!")[0];
+  return {
+    id: tags.id || crypto.randomUUID(),
+    source: { type: "twitch", label: `#${channel}` },
+    user: { name: user, color: tags.color || null },
+    text,
+    emotes: parseIrcEmotes(tags.emotes || ""),
+    ts: Number(tags["tmi-sent-ts"]) || Date.now(),
+  };
+}
+
+module.exports = { start, parseTags, twitchMessage };

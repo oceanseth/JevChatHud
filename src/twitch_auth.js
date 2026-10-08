@@ -266,4 +266,5 @@ module.exports = {
   channelCategory,
   broadcasterIdFor,
   sendChatMessage,
+  helixGet,
 };
