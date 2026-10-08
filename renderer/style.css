@@ -915,6 +915,7 @@ button.linklike:hover { text-decoration: underline; border: none; }
 .section-note { font-size: 10px; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
 .section-note.block { margin-top: 2px; line-height: 1.4; }
 .trans-mark { opacity: 0.55; font-size: 0.85em; margin-right: 4px; cursor: help; }
+#translator-setup.hidden { display: none; }
 
 /* Connected-Masky state: avatar + "Masky Connected: <name>" + logout */
 #masky-connect-row.hidden,
