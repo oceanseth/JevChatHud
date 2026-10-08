@@ -47,4 +47,13 @@ contextBridge.exposeInMainWorld("hud", {
   onSpeakerIdentity: on("speaker:identity"),
   onSpeakerError: on("speaker:error"),
   onSpeakerPlayed: on("speaker:played"),
+  twitchStatus: () => ipcRenderer.invoke("twitch:status"),
+  twitchLogin: () => ipcRenderer.invoke("twitch:login"),
+  twitchLogout: () => ipcRenderer.invoke("twitch:logout"),
+  twitchSend: (text) => ipcRenderer.invoke("twitch:send", text),
+  onTwitchPending: on("twitch:pending"),
+  onTwitchStatus: on("twitch:status"),
+  identityLoad: () => ipcRenderer.invoke("identity:load"),
+  identityImages: (avatarId, ownerUserId) => ipcRenderer.invoke("identity:images", { avatarId, ownerUserId }),
+  identitySave: (body) => ipcRenderer.invoke("identity:save", body),
 });

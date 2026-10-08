@@ -99,6 +99,38 @@
     </div>
   </main>
 
+  <div id="chat-dock">
+    <div id="identity-pop" class="hidden" role="dialog" aria-label="Manage identity">
+      <div class="id-panel">
+        <div class="id-head">
+          <h2>Manage identity</h2>
+          <button type="button" id="identity-close" title="Close">✕</button>
+        </div>
+        <p class="section-note block">This avatar renders your messages on any stream using JevChatHud.</p>
+        <div id="id-own" class="id-grid"></div>
+        <h3>Community avatars <span id="id-game" class="section-note"></span></h3>
+        <div id="id-community" class="id-grid"></div>
+        <div id="id-images" class="hidden"></div>
+        <div class="id-actions">
+          <button type="button" id="id-clear" class="linklike">clear identity</button>
+        </div>
+        <div id="id-status" class="section-note block"></div>
+      </div>
+      <div class="id-panel id-redemptions">
+        <h2>Redemptions <span class="soon">coming soon</span></h2>
+        <p class="section-note block">Channel-point redemptions will show up here.</p>
+      </div>
+    </div>
+    <form id="chat-compose">
+      <button type="button" id="identity-btn" title="Manage identity">
+        <img src="assets/masky-m.png" alt="" />
+      </button>
+      <input id="chat-input" maxlength="500" placeholder="Send a message" autocomplete="off" spellcheck="false" />
+      <button type="submit" id="chat-send">Chat</button>
+    </form>
+    <div id="chat-error" class="hidden"></div>
+  </div>
+
   <footer id="statusbar">
     <span id="stats">no messages yet</span>
     <span id="mic-status"></span>
@@ -147,6 +179,20 @@
       <label id="appearance-timestamps-label">
         <input type="checkbox" id="appearance-timestamps" /> show message timestamps
       </label>
+
+      <h2 id="twitch-heading">Twitch</h2>
+      <div class="section-note block">Log in to send messages in the Twitch channel this profile is reading.
+        Twitch shows the consent page as Masky — that's the app this HUD uses to chat.</div>
+      <div class="row" id="twitch-connect-row">
+        <button type="button" id="twitch-login-btn" class="primary">Log in with Twitch</button>
+        <span id="twitch-status" class="section-note">not connected</span>
+      </div>
+      <div class="row hidden" id="twitch-connected-row">
+        <img id="twitch-avatar-img" class="masky-avatar hidden" alt="" />
+        <span id="twitch-connected-name" class="masky-connected-name"></span>
+        <button type="button" id="twitch-logout-btn">logout</button>
+      </div>
+      <div id="twitch-pending" class="section-note block hidden"></div>
 
       <h2 id="mic-heading">Microphone</h2>
       <div class="section-note block">When the mic is on, your recent speech is transcribed locally (never uploaded)

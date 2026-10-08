@@ -189,3 +189,63 @@ test("lookupUserAvatar falls back to a voiced public avatar when the self-avatar
   const res = await client.lookupUserAvatar("t", "someone");
   assert.equal(res.avatarId, "pub");
 });
+
+test("listAvatars keeps voiceId and the portrait for the identity picker", async () => {
+  const client = new MaskyClient({
+    fetchImpl: async () =>
+      jsonResponse({
+        avatars: [
+          { avatarId: "a", avatarOwnerUserId: "u", displayName: "Mira", avatarImageUrl: "https://img/a.png", voiceId: null },
+          { avatarId: "b", displayName: "Rex", humeVoiceId: "v9" },
+        ],
+      }),
+  });
+  const list = await client.listAvatars("t");
+  assert.equal(list[0].voiceId, null);
+  assert.equal(list[0].imageUrl, "https://img/a.png");
+  assert.equal(list[1].voiceId, "v9");
+});
+
+test("setStreamIdentity sends a community owner and category, and clears with null", async () => {
+  const bodies = [];
+  const client = new MaskyClient({
+    fetchImpl: async (_url, opts) => {
+      bodies.push(JSON.parse(opts.body));
+      return jsonResponse({ streamIdentity: { avatarId: "c", imageUrl: "https://img/c.png" } });
+    },
+  });
+  const saved = await client.setStreamIdentity("t", {
+    avatarId: "c",
+    imageUrl: "https://img/c.png",
+    avatarOwnerUserId: "twitch:admin",
+    category: "Path of Exile",
+  });
+  assert.equal(saved.avatarId, "c");
+  assert.deepEqual(bodies[0], {
+    avatarId: "c",
+    imageUrl: "https://img/c.png",
+    avatarOwnerUserId: "twitch:admin",
+    category: "Path of Exile",
+  });
+  await client.setStreamIdentity("t", { avatarId: null });
+  assert.deepEqual(bodies[1], { avatarId: null });
+});
+
+test("listCommunityAvatars treats a missing endpoint as unavailable, not an empty category", async () => {
+  const missing = new MaskyClient({
+    fetchImpl: async () => jsonResponse({ error: "not found" }, 404),
+  });
+  assert.deepEqual(await missing.listCommunityAvatars("t", "Path of Exile"), { avatars: [], unavailable: true });
+  const client = new MaskyClient({
+    fetchImpl: async (url) => {
+      assert.match(url, /category=Path%20of%20Exile/);
+      return jsonResponse({
+        avatars: [{ avatarId: "c", avatarOwnerUserId: "twitch:9", displayName: "Exile", avatarImageUrl: "https://img/c.png", voiceId: "v" }],
+      });
+    },
+  });
+  const listed = await client.listCommunityAvatars("t", "Path of Exile");
+  assert.equal(listed.unavailable, false);
+  assert.equal(listed.avatars[0].name, "Exile");
+  assert.equal(listed.avatars[0].ownerUserId, "twitch:9");
+});

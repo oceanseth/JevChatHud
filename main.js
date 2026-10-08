@@ -9,6 +9,16 @@ const winstall = require("./src/whisper_install");
 const { Speaker } = require("./src/speaker");
 const { MaskyClient } = require("./src/masky");
 const { maskyLogin } = require("./src/masky_login");
+const {
+  activeTwitchChannel,
+  publicTwitch,
+  startDeviceFlow,
+  pollDeviceToken,
+  identityFromToken,
+  channelCategory,
+  broadcasterIdFor,
+  sendChatMessage,
+} = require("./src/twitch_auth");
 
 // In a packaged build macOS reads the name from Info.plist; this covers dev
 // (dock, notifications, userData path stays "jevchathud" via package.json name).
@@ -17,6 +27,22 @@ app.setName("JevChatHud");
 let win = null;
 let shareWin = null;
 let settings = null;
+
+/** Settings for the renderer. The Twitch access token stays in main. */
+function settingsForClient() {
+  const data = settings.get();
+  const tw = data.twitch || {};
+  return {
+    ...data,
+    twitch: {
+      login: tw.login || "",
+      displayName: tw.displayName || tw.login || "",
+      userId: tw.userId || "",
+      profileImageUrl: tw.profileImageUrl || "",
+    },
+  };
+}
+
 let sources = null;
 let judge = null;
 let userStats = null;
@@ -281,17 +307,22 @@ app.whenReady().then(() => {
     onStatus: (status) => send("source:status", status),
   });
 
-  ipcMain.handle("settings:get", () => settings.get());
+  ipcMain.handle("settings:get", () => settingsForClient());
   ipcMain.handle("settings:update", (_e, patch) => {
-    const updated = settings.update(patch);
-    if ("alwaysOnTop" in patch && win) win.setAlwaysOnTop(!!patch.alwaysOnTop);
-    return updated;
+    // Twitch credentials are written only by the device-code handlers below.
+    // A renderer patch must not be able to round-trip a redacted twitch
+    // object back over the stored access token.
+    const safe = { ...(patch || {}) };
+    delete safe.twitch;
+    settings.update(safe);
+    if ("alwaysOnTop" in safe && win) win.setAlwaysOnTop(!!safe.alwaysOnTop);
+    return settingsForClient();
   });
   ipcMain.handle("profiles:save", (_e, profile) => settings.saveProfile(profile));
   ipcMain.handle("profiles:delete", (_e, id) => {
     if (settings.get().activeProfileId === id) activateProfile(null);
     settings.deleteProfile(id);
-    return settings.get();
+    return settingsForClient();
   });
   ipcMain.handle("profile:activate", (_e, id) => activateProfile(id));
   ipcMain.handle("user:profile", (_e, { platform, name }) => userStats.get(platform, name));
@@ -408,6 +439,105 @@ app.whenReady().then(() => {
     shell.openExternal(url);
     return url;
   });
+
+  // Twitch account for the chat composer (sending), distinct from the Masky
+  // token that pays for renders. Device-code login opens twitch.tv/activate;
+  // the poll finishes in the background and pushes twitch:status.
+  let twitchLoginGen = 0;
+  const twitchView = () => publicTwitch(settings.get().twitch);
+  ipcMain.handle("twitch:status", () => twitchView());
+  ipcMain.handle("twitch:login", async () => {
+    const gen = ++twitchLoginGen;
+    const flow = await startDeviceFlow();
+    shell.openExternal(flow.verificationUri);
+    send("twitch:pending", { userCode: flow.userCode, verificationUri: flow.verificationUri });
+    pollDeviceToken(flow.deviceCode, {
+      intervalSec: flow.intervalSec,
+      expiresInSec: flow.expiresInSec,
+    })
+      .then(async (tok) => {
+        if (gen !== twitchLoginGen) return;
+        const who = await identityFromToken(tok.accessToken);
+        if (gen !== twitchLoginGen) return;
+        settings.update({ twitch: who });
+        send("twitch:status", twitchView());
+      })
+      .catch((err) => {
+        if (gen !== twitchLoginGen) return;
+        send("twitch:status", { ...twitchView(), error: err.message || "Twitch login failed" });
+      });
+    return { userCode: flow.userCode, verificationUri: flow.verificationUri };
+  });
+  ipcMain.handle("twitch:logout", () => {
+    twitchLoginGen += 1;
+    settings.update({
+      twitch: { accessToken: "", login: "", displayName: "", userId: "", profileImageUrl: "" },
+    });
+    const view = twitchView();
+    send("twitch:status", view);
+    return view;
+  });
+  ipcMain.handle("twitch:send", async (_e, text) => {
+    const tw = settings.get().twitch;
+    if (!tw.accessToken || !tw.userId) throw new Error("Log in with Twitch in Settings first");
+    const channel = activeTwitchChannel(settings.get());
+    if (!channel) throw new Error("This profile has no Twitch channel");
+    const broadcasterId = await broadcasterIdFor(tw.accessToken, channel);
+    if (!broadcasterId) throw new Error(`Twitch channel #${channel} was not found`);
+    return sendChatMessage({
+      token: tw.accessToken,
+      broadcasterId,
+      senderId: tw.userId,
+      message: text,
+    });
+  });
+
+  // Manage-identity popup: the viewer's own avatars plus community avatars
+  // enabled for the watched channel's current game. All Masky calls stay in
+  // main so the bearer token never has to be fetched from the renderer.
+  async function loadCommunity(token, channel) {
+    if (!channel) return { channel: "", gameName: "", avatars: [], reason: "no-channel" };
+    const tw = settings.get().twitch;
+    if (!tw.accessToken) return { channel, gameName: "", avatars: [], reason: "no-twitch" };
+    let gameName = "";
+    try {
+      gameName = (await channelCategory(tw.accessToken, channel)).gameName || "";
+    } catch (err) {
+      return { channel, gameName: "", avatars: [], reason: "category-failed", error: err.message };
+    }
+    if (!gameName) return { channel, gameName: "", avatars: [], reason: "no-category" };
+    const listed = await maskyClient.listCommunityAvatars(token, gameName);
+    return {
+      channel,
+      gameName,
+      avatars: listed.avatars,
+      reason: listed.unavailable ? "unavailable" : "",
+    };
+  }
+  ipcMain.handle("identity:load", async () => {
+    const token = settings.get().speaker.maskyToken;
+    const channel = activeTwitchChannel(settings.get());
+    if (!token) {
+      return { connected: false, avatars: [], streamIdentity: null, community: { channel, gameName: "", avatars: [], reason: "no-masky" } };
+    }
+    const [avatars, streamIdentity, community] = await Promise.all([
+      maskyClient.listAvatars(token),
+      maskyClient.getStreamIdentity(token),
+      loadCommunity(token, channel),
+    ]);
+    return { connected: true, avatars, streamIdentity, community };
+  });
+  ipcMain.handle("identity:images", async (_e, { avatarId, ownerUserId } = {}) => {
+    const token = settings.get().speaker.maskyToken;
+    if (!token) throw new Error("Connect Masky in Settings first");
+    return maskyClient.listAvatarImages(token, avatarId, ownerUserId || "");
+  });
+  ipcMain.handle("identity:save", async (_e, body) => {
+    const token = settings.get().speaker.maskyToken;
+    if (!token) throw new Error("Connect Masky in Settings first");
+    return { streamIdentity: await maskyClient.setStreamIdentity(token, body || {}) };
+  });
+
   ipcMain.handle("speaker:state", () => speaker.emitState());
   ipcMain.handle("speaker:arrange", (_e, on) => {
     arranging = !!on;
