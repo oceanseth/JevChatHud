@@ -310,7 +310,8 @@ function renderUserProfile(profile) {
     statCell("first seen", relTime(profile.firstSeenTs), new Date(profile.firstSeenTs).toLocaleString()),
     statCell("messages", String(profile.messages)),
     statCell("judged", String(profile.judged)),
-    statCell("avg relevancy", profile.avgRelevancy == null ? "—" : String(profile.avgRelevancy))
+    statCell("avg relevancy", profile.avgRelevancy == null ? "—" : String(profile.avgRelevancy)),
+    statCell("🏆 read on stream", String(profile.reads || 0), "times Jev judged this user's message most relevant and read it aloud")
   );
   const firstSeen = userObserved.firstElementChild.querySelector(".stat-label");
   firstSeen.textContent = `first seen · ${new Date(profile.firstSeenTs).toLocaleString([], {
@@ -339,6 +340,7 @@ async function openUserProfile(platform, user) {
     firstSeenTs: Date.now(),
     messages: 1,
     judged: 0,
+    reads: 0,
     relevancySum: 0,
     kinds: {},
     kindPct: {},
@@ -365,6 +367,60 @@ async function refreshUserProfileIf(ref) {
 document.getElementById("user-card-close").addEventListener("click", closeUserProfile);
 userOverlay.addEventListener("click", (e) => {
   if (e.target === userOverlay) closeUserProfile();
+});
+
+// ---------- reading leaderboard (trophy button) ----------
+
+const leaderboardOverlay = document.getElementById("leaderboard-overlay");
+const leaderboardRows = document.getElementById("leaderboard-rows");
+const leaderboardEmpty = document.getElementById("leaderboard-empty");
+
+async function renderLeaderboard() {
+  const entries = (await hud.getLeaderboard()) || [];
+  leaderboardEmpty.classList.toggle("hidden", entries.length > 0);
+  leaderboardRows.replaceChildren(
+    ...entries.map((u, i) => {
+      const row = document.createElement("button");
+      row.className = "lb-row";
+      const msgs = `${u.messages} message${u.messages === 1 ? "" : "s"}`;
+      const avg = u.avgRelevancy == null ? "" : ` · avg relevancy ${u.avgRelevancy}`;
+      row.title = `${msgs}${avg} — click for profile`;
+      const rank = document.createElement("span");
+      rank.className = "lb-rank";
+      rank.textContent = String(i + 1);
+      const name = document.createElement("span");
+      name.className = "lb-name";
+      name.textContent = u.name;
+      if (u.color) name.style.color = u.color;
+      const chip = document.createElement("span");
+      chip.className = `chip src-${u.platform}`;
+      chip.textContent = u.platform;
+      const reads = document.createElement("span");
+      reads.className = "lb-reads";
+      reads.textContent = String(u.reads);
+      row.append(rank, name, chip, reads);
+      row.addEventListener("click", () => {
+        closeLeaderboard();
+        openUserProfile(u.platform, { name: u.name, color: u.color });
+      });
+      return row;
+    })
+  );
+}
+
+async function openLeaderboard() {
+  await renderLeaderboard();
+  leaderboardOverlay.classList.remove("hidden");
+}
+
+function closeLeaderboard() {
+  leaderboardOverlay.classList.add("hidden");
+}
+
+document.getElementById("trophy-btn").addEventListener("click", openLeaderboard);
+document.getElementById("leaderboard-close").addEventListener("click", closeLeaderboard);
+leaderboardOverlay.addEventListener("click", (e) => {
+  if (e.target === leaderboardOverlay) closeLeaderboard();
 });
 
 // ---------- tag filter bar ----------
@@ -1294,6 +1350,7 @@ document.addEventListener("keydown", (e) => {
   const emotePopEl = document.getElementById("emote-pop");
   if (emotePopEl && !emotePopEl.classList.contains("hidden")) closeEmotePicker();
   else if (identityPopEl && !identityPopEl.classList.contains("hidden")) identityPopEl.classList.add("hidden");
+  else if (!leaderboardOverlay.classList.contains("hidden")) closeLeaderboard();
   else if (!userOverlay.classList.contains("hidden")) closeUserProfile();
   else if (!overlay.classList.contains("hidden")) closeSettingsPanel();
 });
@@ -1761,6 +1818,8 @@ hud.onSpeakerError((err) => {
 
 hud.onSpeakerPlayed(({ username, relevancy, audio }) => {
   speakerNote.textContent = `now reading ${username}${audio ? " (audio only)" : ""} (relevancy ${relevancy})`;
+  // A reading just credited someone — keep an open leaderboard live.
+  if (!leaderboardOverlay.classList.contains("hidden")) renderLeaderboard();
 });
 
 // Audio-only readings: no popup window — the clip's sound plays through the

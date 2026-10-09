@@ -295,6 +295,9 @@ app.whenReady().then(() => {
   // Audio-only readings play inside the HUD window (no popup at all);
   // video readings go to the transparent share window.
   const playReading = (payload) => {
+    // A real chat message (not a test greeting) won the reading — credit the
+    // author's lifetime "read on stream" count for the trophy leaderboard.
+    if (payload.key) userStats.recordRead(payload.platform, payload.username);
     if (payload.audio) {
       send("speaker:play-audio", payload);
     } else {
@@ -369,6 +372,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("profile:activate", (_e, id) => activateProfile(id));
   ipcMain.handle("user:profile", (_e, { platform, name }) => userStats.get(platform, name));
+  ipcMain.handle("user:leaderboard", () => userStats.leaderboard());
 
   // "Jev speaks" share window + Masky account plumbing.
   const maskyClient = new MaskyClient();

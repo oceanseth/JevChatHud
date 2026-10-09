@@ -75,12 +75,44 @@ test("unknown users return null; zero-judged users have null avgRelevancy", () =
   assert.deepEqual(p.kindPct, {});
 });
 
+test("recordRead counts avatar readings; old records without the field read as 0", () => {
+  const stats = new UserStats(tmpDir());
+  stats.recordMessage(msg("Alice", "pick me"));
+  stats.recordRead("twitch", "ALICE"); // same case-insensitive key as messages
+  stats.recordRead("twitch", "alice");
+  assert.equal(stats.get("twitch", "alice").reads, 2);
+
+  // a user record persisted before the reads counter existed
+  delete stats.users[userKey("twitch", "alice")].reads;
+  assert.equal(stats.get("twitch", "alice").reads, 0);
+  stats.recordRead("twitch", "alice");
+  assert.equal(stats.get("twitch", "alice").reads, 1);
+
+  // unknown user: no crash, no phantom record
+  stats.recordRead("twitch", "nobody");
+  assert.equal(stats.get("twitch", "nobody"), null);
+});
+
+test("leaderboard ranks by reads, breaks ties by messages, hides zero-read users", () => {
+  const stats = new UserStats(tmpDir());
+  for (const [name, msgs, reads] of [["Quiet", 1, 0], ["Champ", 2, 3], ["Busy", 9, 1], ["Rare", 1, 1]]) {
+    for (let i = 0; i < msgs; i++) stats.recordMessage(msg(name, `m${i}`, { color: "#abc" }));
+    for (let i = 0; i < reads; i++) stats.recordRead("twitch", name);
+  }
+  const board = stats.leaderboard();
+  assert.deepEqual(board.map((u) => u.name), ["Champ", "Busy", "Rare"]); // Quiet never read
+  assert.deepEqual(board.map((u) => u.reads), [3, 1, 1]);
+  assert.equal(board[0].color, "#abc");
+  assert.equal(stats.leaderboard(2).length, 2);
+});
+
 test("stats persist across instances via save()", () => {
   const dir = tmpDir();
   const stats = new UserStats(dir);
   const m = msg("Alice", "is the audio ok?", { ts: 42 });
   stats.recordMessage(m);
   stats.recordJudgment(m, { relevancy: 90, kind: "stream_issue" });
+  stats.recordRead("twitch", "alice");
   stats.save();
 
   const reloaded = new UserStats(dir);
@@ -88,4 +120,5 @@ test("stats persist across instances via save()", () => {
   assert.equal(p.firstSeenTs, 42);
   assert.equal(p.messages, 1);
   assert.equal(p.kindPct.stream_issue, 100);
+  assert.equal(p.reads, 1);
 });

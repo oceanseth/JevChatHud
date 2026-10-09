@@ -194,6 +194,9 @@ class Speaker {
         platform: pick.platform,
         relevancy: pick.relevancy,
         audio: output === "audio",
+        // Real chat messages carry their dedupe key; test greetings don't.
+        // Main uses this to count "read on stream" wins per user.
+        key: pick.key || null,
       });
       this.refreshBalance();
       return url;

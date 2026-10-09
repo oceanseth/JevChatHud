@@ -20,6 +20,16 @@
       <img id="jev-face" src="assets/jev-judge-open.png" alt="Jev Judge" />
       <video id="jev-video" class="hidden" playsinline></video>
     </button>
+    <button id="trophy-btn" class="icon-btn" title="Reading leaderboard — whose messages Jev has read aloud on stream">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+        <path d="M4 22h16" />
+        <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+        <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+      </svg>
+    </button>
     <button id="mic-btn" class="icon-btn" title="Listen to your microphone so Jev can judge chat against what you're saying">
       <img src="assets/icon-mic.png" alt="mic" />
     </button>
@@ -392,6 +402,27 @@
 
       <h2>Stylometry <span class="soon">coming soon</span></h2>
       <div class="section-note block">Writing-style fingerprint to correlate this user with known accounts on other platforms. Message samples are already being collected.</div>
+    </div>
+  </div>
+
+  <!-- Reading leaderboard: trophy button in the header. Counts how many times
+       each chatter's message was judged most relevant and read aloud by the
+       avatar. Rows open that chatter's profile popup. -->
+  <div id="leaderboard-overlay" class="hidden">
+    <div id="leaderboard-card">
+      <div id="leaderboard-head">
+        <span id="leaderboard-trophy">🏆</span>
+        <div id="leaderboard-title">
+          <div>Reading leaderboard</div>
+          <span class="section-note">times Jev read a chatter's message on stream</span>
+        </div>
+        <button id="leaderboard-close" title="Close (Esc)">✕</button>
+      </div>
+      <div id="leaderboard-rows"></div>
+      <div id="leaderboard-empty" class="section-note block hidden">
+        No readings yet. When "Jev speaks" is on, the most relevant message each
+        interval gets read aloud — its author scores a trophy here.
+      </div>
     </div>
   </div>
 

@@ -89,6 +89,16 @@ test("video renders carry the streamer's quality pick; audio renders don't", asy
   assert.equal(calls[2].quality, undefined);
 });
 
+test("play payload carries the message key for real readings, null for test greetings", async () => {
+  const { speaker, events } = makeSpeaker({ cfg: { ...baseCfg }, client: fakeClient() });
+  await speaker.render({ username: "a", platform: "twitch", text: "hi", relevancy: 50, key: "k1" });
+  assert.equal(events.plays[0].key, "k1"); // main credits this user's read count
+  speaker.start();
+  await speaker.tick({ force: true }); // settings test button: greeting, nobody's trophy
+  speaker.stop();
+  assert.equal(events.plays[1].key, null);
+});
+
 test("read-with-user-avatars pins the chatter's stream-identity still on the render", async () => {
   const calls = [];
   const client = fakeClient({

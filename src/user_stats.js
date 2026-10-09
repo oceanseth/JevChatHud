@@ -38,6 +38,7 @@ class UserStats {
         lastSeenTs: ts,
         messages: 0,
         judged: 0,
+        reads: 0,
         relevancySum: 0,
         kinds: {},
         samples: [],
@@ -64,6 +65,38 @@ class UserStats {
   }
 
   /**
+   * One of this user's messages won a reading window and was read aloud by
+   * the avatar. Keyed the same way the speaker's pick carries it (platform =
+   * msg.source.type, name = msg.user.name); the user always exists by now
+   * because recordMessage ran when the message arrived.
+   */
+  recordRead(platform, name) {
+    const u = this.users[userKey(platform, name)];
+    if (!u) return;
+    u.reads = (u.reads || 0) + 1;
+    this.scheduleSave();
+  }
+
+  /**
+   * Top chatters by times the avatar read their message on stream — the
+   * trophy leaderboard. Ties break toward the heavier chatter.
+   */
+  leaderboard(limit = 20) {
+    return Object.values(this.users)
+      .filter((u) => (u.reads || 0) > 0)
+      .sort((a, b) => (b.reads || 0) - (a.reads || 0) || b.messages - a.messages)
+      .slice(0, limit)
+      .map((u) => ({
+        platform: u.platform,
+        name: u.name,
+        color: u.color || null,
+        reads: u.reads || 0,
+        messages: u.messages,
+        avgRelevancy: u.judged ? Math.round(u.relevancySum / u.judged) : null,
+      }));
+  }
+
+  /**
    * Profile for the popup: raw record plus derived averages. `kindPct[k]` is
    * the share of this user's judged messages classified as kind k — "how
    * toxic is this user on average" = kindPct.toxic.
@@ -78,6 +111,7 @@ class UserStats {
     return {
       ...u,
       kindPct,
+      reads: u.reads || 0, // records predating the reads counter
       avgRelevancy: u.judged ? Math.round(u.relevancySum / u.judged) : null,
     };
   }

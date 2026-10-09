@@ -112,6 +112,14 @@ body { display: flex; flex-direction: column; }
 .icon-btn.active img { filter: drop-shadow(0 0 7px rgba(124, 92, 255, 0.95)); }
 .icon-btn span { font-size: 12px; color: var(--text-dim); }
 .icon-btn:hover span { color: var(--text); }
+.icon-btn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));
+}
+#trophy-btn { color: #e8c35a; } /* trophy gold, dimmed by the dark bar */
+#trophy-btn:hover { color: #ffd968; }
 
 select, input[type="text"], input[type="password"], textarea {
   background: var(--field);
@@ -900,6 +908,64 @@ button.linklike:hover { text-decoration: underline; border: none; }
 #user-card-platform { margin-top: 2px; display: inline-block; }
 #user-card-close { padding: 2px 8px; color: var(--text-dim); border-color: transparent; }
 #user-card-close:hover { color: var(--text); border-color: var(--border); }
+
+/* Reading leaderboard popup (trophy button): same chrome as the user card. */
+#leaderboard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+#leaderboard-overlay.hidden { display: none; }
+#leaderboard-card {
+  background: rgba(19, 19, 30, 0.86);
+  backdrop-filter: blur(28px) saturate(1.25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  width: min(360px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+#leaderboard-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+#leaderboard-trophy { font-size: 24px; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5)); }
+#leaderboard-title { flex: 1; min-width: 0; }
+#leaderboard-title div { font-size: 15px; font-weight: 700; }
+#leaderboard-close { padding: 2px 8px; color: var(--text-dim); border-color: transparent; }
+#leaderboard-close:hover { color: var(--text); border-color: var(--border); }
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  margin: 2px 0;
+  background: rgba(8, 8, 14, 0.4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.lb-row:hover { background: var(--bg-hover); }
+.lb-rank {
+  width: 22px;
+  flex-shrink: 0;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+.lb-row:nth-child(1) .lb-rank { color: #ffd968; } /* gold */
+.lb-row:nth-child(2) .lb-rank { color: #c9d1dd; } /* silver */
+.lb-row:nth-child(3) .lb-rank { color: #d99a6c; } /* bronze */
+.lb-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-reads { font-weight: 700; font-variant-numeric: tabular-nums; }
+.lb-reads::after { content: " 🏆"; font-size: 11px; }
 
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .stat {
