@@ -144,7 +144,10 @@
       <button type="button" id="identity-btn" title="Manage identity">
         <img src="assets/masky-m.png" alt="" />
       </button>
-      <input id="chat-input" maxlength="500" placeholder="Send a message" autocomplete="off" spellcheck="false" />
+      <!-- Contenteditable so picked emotes render as inline images; app.js
+           serializes it back to "name" tokens on send and caps it at 500. -->
+      <div id="chat-input" contenteditable="true" role="textbox" aria-label="Send a message"
+        spellcheck="false" data-placeholder="Send a message"></div>
       <button type="button" id="emote-btn" title="Emotes" aria-label="Emotes">
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5"/>

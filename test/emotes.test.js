@@ -6,6 +6,7 @@ const {
   tokenizeMessage,
   nameMapFromGroups,
   insertEmoteName,
+  serializeComposeParts,
 } = require("../renderer/emotes");
 const { twitchMessage, parseTags } = require("../src/sources/twitch");
 const { loadEmoteCatalog, collect7tv, collectBttv, collectFfz } = require("../src/emote_catalog");
@@ -96,6 +97,48 @@ test("insertEmoteName pads with spaces around the caret", () => {
     value: "a Kappa b",
     caret: 8,
   });
+});
+
+test("serializeComposeParts flattens the rich composer to wire text", () => {
+  // plain text passes through untouched
+  assert.equal(serializeComposeParts([{ type: "text", text: "hello there" }]), "hello there");
+  // emote names get forced whitespace boundaries so they stay tokens
+  assert.equal(
+    serializeComposeParts([
+      { type: "text", text: "gg" },
+      { type: "emote", name: "Clap2" },
+      { type: "text", text: "wow" },
+    ]),
+    "gg Clap2 wow",
+  );
+  // existing whitespace is respected — no double spaces
+  assert.equal(
+    serializeComposeParts([
+      { type: "text", text: "gg " },
+      { type: "emote", name: "Clap2" },
+      { type: "text", text: " wow" },
+    ]),
+    "gg Clap2 wow",
+  );
+  // consecutive emotes, leading emote, trailing emote
+  assert.equal(
+    serializeComposeParts([
+      { type: "emote", name: "Kappa" },
+      { type: "emote", name: "modCheck" },
+    ]),
+    "Kappa modCheck",
+  );
+  // blank text and nameless emotes are skipped
+  assert.equal(
+    serializeComposeParts([
+      { type: "text", text: "" },
+      { type: "emote", name: "  " },
+      { type: "emote", name: "Kappa" },
+    ]),
+    "Kappa",
+  );
+  assert.equal(serializeComposeParts([]), "");
+  assert.equal(serializeComposeParts(null), "");
 });
 
 test("collectors map 7TV/BTTV/FFZ payloads to CDN urls", () => {

@@ -1993,10 +1993,77 @@ function showChatStatus(text) {
 
 function renderCompose() {
   const channel = profileTwitchChannel();
-  chatInput.disabled = !channel;
+  chatInput.contentEditable = channel ? "true" : "false";
   chatSend.disabled = !channel;
-  chatInput.placeholder = channel ? "Send a message" : "Add a Twitch channel to this profile";
+  chatInput.dataset.placeholder = channel ? "Send a message" : "Add a Twitch channel to this profile";
 }
+
+// ---------- rich composer (contenteditable) ----------
+// Picked emotes live in the input as real <img> tags; sending flattens the
+// DOM back to whitespace-separated "name" tokens via serializeComposeParts.
+
+const CHAT_MAX = 500;
+
+function composeParts() {
+  const parts = [];
+  const walk = (node) => {
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) parts.push({ type: "text", text: child.nodeValue });
+      else if (child.nodeName === "IMG") parts.push({ type: "emote", name: child.alt });
+      else if (child.nodeName === "BR") parts.push({ type: "text", text: " " });
+      else walk(child);
+    }
+  };
+  walk(chatInput);
+  return parts;
+}
+
+const composeText = () => serializeComposeParts(composeParts());
+
+// Enter sends (Twitch chat has no newlines, so Shift+Enter is swallowed too).
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    if (!e.shiftKey) chatForm.requestSubmit();
+  }
+});
+
+// The old <input maxlength> cap, minus pastes (the paste handler trims).
+chatInput.addEventListener("beforeinput", (e) => {
+  if (!e.inputType?.startsWith("insert") || e.inputType === "insertFromPaste") return;
+  if (composeText().length >= CHAT_MAX) e.preventDefault();
+});
+
+// Plain text only — no pasted markup, newlines flattened, capped at 500.
+// Inserted as a text node we keep a handle on, so the cap can chop exactly
+// the pasted tail (serialization adds boundary spaces next to emotes, which
+// a length precheck can't see).
+chatInput.addEventListener("paste", (e) => {
+  e.preventDefault();
+  const raw = (e.clipboardData?.getData("text/plain") || "").replace(/[\r\n]+/g, " ");
+  const sel = window.getSelection();
+  if (!raw || !sel.rangeCount || !chatInput.contains(sel.getRangeAt(0).startContainer)) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(raw);
+  range.insertNode(node);
+  const excess = composeText().length - CHAT_MAX;
+  if (excess > 0) node.nodeValue = node.nodeValue.slice(0, Math.max(0, node.nodeValue.length - excess));
+  if (!node.nodeValue) node.remove();
+  else {
+    range.setStartAfter(node);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+});
+chatInput.addEventListener("drop", (e) => e.preventDefault());
+
+// Deleting the last character can leave a lone <br> behind, which defeats
+// the :empty placeholder — sweep it so empty really means empty.
+chatInput.addEventListener("input", () => {
+  if (!chatInput.textContent.trim() && !chatInput.querySelector("img")) chatInput.replaceChildren();
+});
 
 function renderTwitch() {
   const tw = twitchAccount || {};
@@ -2067,7 +2134,7 @@ hud.onTwitchStatus((view) => {
 
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const text = chatInput.value.trim();
+  const text = composeText().trim().slice(0, CHAT_MAX);
   if (!text) return;
   if (!profileTwitchChannel()) return;
   if (!twitchAccount?.connected) {
@@ -2079,7 +2146,7 @@ chatForm.addEventListener("submit", async (e) => {
   chatSend.disabled = true;
   try {
     await hud.twitchSend(text);
-    chatInput.value = "";
+    chatInput.replaceChildren();
   } catch (err) {
     showChatError(err.message || String(err));
   } finally {
@@ -2426,7 +2493,7 @@ function renderEmotePicker() {
       img.loading = "lazy";
       img.referrerPolicy = "no-referrer";
       btn.append(img);
-      btn.addEventListener("click", () => pickEmote(em.name));
+      btn.addEventListener("click", () => pickEmote(em));
       grid.append(btn);
       shown += 1;
     }
@@ -2441,13 +2508,33 @@ function renderEmotePicker() {
   }
 }
 
-function pickEmote(name) {
-  const start = chatInput.selectionStart ?? chatInput.value.length;
-  const end = chatInput.selectionEnd ?? start;
-  const next = insertEmoteName(chatInput.value, name, start, end);
-  chatInput.value = next.value;
+// Insert the picked emote as a real image at the caret (append when the
+// input isn't holding the selection); it shows as the emote, not its name.
+function pickEmote(em) {
+  if (chatInput.contentEditable === "false") return;
+  if (composeText().length + String(em.name || "").length + 2 > CHAT_MAX) return;
+  const img = document.createElement("img");
+  img.className = "emote";
+  img.src = em.url;
+  img.alt = em.name;
+  img.title = em.name;
+  img.referrerPolicy = "no-referrer";
+  const sel = window.getSelection();
+  let range;
+  if (sel.rangeCount && chatInput.contains(sel.getRangeAt(0).startContainer)) {
+    range = sel.getRangeAt(0);
+    range.deleteContents();
+  } else {
+    range = document.createRange();
+    range.selectNodeContents(chatInput);
+    range.collapse(false);
+  }
+  range.insertNode(img);
+  range.setStartAfter(img);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
   chatInput.focus();
-  chatInput.setSelectionRange(next.caret, next.caret);
 }
 
 emoteBtn.addEventListener("click", () => {

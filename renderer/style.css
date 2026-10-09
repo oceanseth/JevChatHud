@@ -468,10 +468,23 @@ body.show-timestamps .msg .time { display: inline; }
   font: inherit;
   padding: 6px 2px;
   outline: none;
+  cursor: text;
+  /* contenteditable: wraps like a textarea but grows only a few lines */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 5.2em;
+  overflow-y: auto;
 }
-#chat-input::placeholder { color: #6b6b7b; }
+#chat-input:empty::before { content: attr(data-placeholder); color: #6b6b7b; pointer-events: none; }
 #chat-input:focus { outline: none; }
-#chat-input:disabled { opacity: 0.55; }
+#chat-input[contenteditable="false"] { opacity: 0.55; cursor: default; }
+#chat-input .emote {
+  height: 1.45em;
+  width: auto;
+  vertical-align: middle;
+  display: inline-block;
+  margin: 0 0.05em;
+}
 #identity-btn {
   width: 32px;
   height: 32px;

@@ -94,6 +94,34 @@ function tokenizeMessage(text, ircEmotes, byName) {
   return segments;
 }
 
+/**
+ * Flatten the rich composer back to the wire text Twitch expects.
+ * Parts are {type:"text", text} | {type:"emote", name} in document order.
+ * Emote names must stay whitespace-separated tokens or other clients render
+ * them as plain text, so boundaries are forced even when the user typed
+ * flush against an emote image.
+ */
+function serializeComposeParts(parts) {
+  let out = "";
+  let needsBoundary = false;
+  for (const part of parts || []) {
+    if (part?.type === "emote") {
+      const name = String(part.name || "").trim();
+      if (!name) continue;
+      if (out && !/\s$/.test(out)) out += " ";
+      out += name;
+      needsBoundary = true;
+    } else if (part?.type === "text") {
+      const text = String(part.text || "");
+      if (!text) continue;
+      if (needsBoundary && !/^\s/.test(text)) out += " ";
+      out += text;
+      needsBoundary = false;
+    }
+  }
+  return out;
+}
+
 /** Insert an emote code at a caret range, with surrounding spaces. */
 function insertEmoteName(value, emoteName, start, end) {
   const src = String(value || "");
@@ -116,5 +144,6 @@ if (typeof module !== "undefined" && module.exports) {
     nameMapFromGroups,
     tokenizeMessage,
     insertEmoteName,
+    serializeComposeParts,
   };
 }
