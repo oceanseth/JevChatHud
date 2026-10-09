@@ -122,11 +122,7 @@ function addMessage(msg) {
   row.className = "msg dim"; // dim until judged
   row._judgment = null;
 
-  const srcChip = document.createElement("span");
-  srcChip.className = `chip src-${msg.source.type}`;
-  srcChip.textContent = msg.source.type;
-  srcChip.title = msg.source.label;
-
+  // No source chip in the feed — the platform shows on the user card popup.
   const time = document.createElement("span");
   time.className = "time";
   time.textContent = new Date(msg.ts || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -160,7 +156,7 @@ function addMessage(msg) {
   expandChip.addEventListener("click", () => toggleExpanded(row));
   badges.append(relChip, expandChip);
 
-  row.append(time, srcChip, body, badges);
+  row.append(time, body, badges);
   row._relChip = relChip;
   row._badges = badges;
   row._body = body;
