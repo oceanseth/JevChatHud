@@ -374,9 +374,62 @@ userOverlay.addEventListener("click", (e) => {
 const leaderboardOverlay = document.getElementById("leaderboard-overlay");
 const leaderboardRows = document.getElementById("leaderboard-rows");
 const leaderboardEmpty = document.getElementById("leaderboard-empty");
+const leaderboardBg = document.getElementById("leaderboard-bg");
+const leaderboardTabs = document.getElementById("leaderboard-tabs");
+const leaderboardTitleText = document.getElementById("leaderboard-title-text");
+const leaderboardSubtitle = document.getElementById("leaderboard-subtitle");
+const leaderboardTrophy = document.getElementById("leaderboard-trophy");
+
+// One tab per board: the main reads board plus every judgment kind. `id`
+// matches the UserStats category; the art lives at assets/leaderboard/<id>.jpg.
+const LB_TABS = [
+  { id: "reads", emoji: "🏆", label: "Read", title: "Reading leaderboard", subtitle: "times Jev read a chatter's message on stream", empty: 'No readings yet. When "Jev speaks" is on, the most relevant message each interval gets read aloud — its author scores a trophy here.' },
+  { id: "toxic", emoji: "☠️", label: "Toxic", title: "Most toxic", subtitle: "messages judged insults, harassment, spam, or bait", empty: "No toxic messages judged yet. A rare win for humanity." },
+  { id: "question", emoji: "❓", label: "Questions", title: "Most questioning", subtitle: "direct questions aimed at the streamer", empty: "No questions judged yet." },
+  { id: "stream_issue", emoji: "🛠️", label: "Issues", title: "Stream watchdogs", subtitle: "reports of stream problems: no audio, lag, frozen video", empty: "No stream issues reported yet. Suspiciously smooth." },
+  { id: "feedback", emoji: "💡", label: "Feedback", title: "Most helpful", subtitle: "concrete feedback, suggestions, and useful info", empty: "No feedback judged yet." },
+  { id: "personal", emoji: "💜", label: "Personal", title: "Most heartfelt", subtitle: "sharing something personal or emotionally significant", empty: "Nothing personal shared yet." },
+  { id: "hype", emoji: "🔥", label: "Hype", title: "Hype squad", subtitle: "hype, praise, emotes, and generic reactions", empty: "No hype judged yet. Dead chat?" },
+  { id: "chatter", emoji: "💬", label: "Chatter", title: "Chattiest", subtitle: "small talk and chatter aimed at other chatters", empty: "No chatter judged yet." },
+];
+let lbActiveTab = LB_TABS[0];
+
+function buildLeaderboardTabs() {
+  leaderboardTabs.replaceChildren(
+    ...LB_TABS.map((tab) => {
+      const btn = document.createElement("button");
+      btn.className = "lb-tab";
+      btn.dataset.tab = tab.id;
+      btn.title = tab.title;
+      const emoji = document.createElement("span");
+      emoji.textContent = tab.emoji;
+      const label = document.createElement("span");
+      label.className = "lb-tab-label";
+      label.textContent = tab.label;
+      btn.append(emoji, label);
+      btn.addEventListener("click", () => {
+        if (lbActiveTab === tab) return;
+        lbActiveTab = tab;
+        renderLeaderboard();
+      });
+      return btn;
+    })
+  );
+}
+buildLeaderboardTabs();
 
 async function renderLeaderboard() {
-  const entries = (await hud.getLeaderboard()) || [];
+  const tab = lbActiveTab;
+  leaderboardTrophy.textContent = tab.emoji;
+  leaderboardTitleText.textContent = tab.title;
+  leaderboardSubtitle.textContent = tab.subtitle;
+  leaderboardBg.src = `assets/leaderboard/${tab.id}.jpg`;
+  for (const btn of leaderboardTabs.children) {
+    btn.classList.toggle("active", btn.dataset.tab === tab.id);
+  }
+  const entries = (await hud.getLeaderboard(tab.id)) || [];
+  if (tab !== lbActiveTab) return; // user switched tabs while we fetched
+  leaderboardEmpty.textContent = tab.empty;
   leaderboardEmpty.classList.toggle("hidden", entries.length > 0);
   leaderboardRows.replaceChildren(
     ...entries.map((u, i) => {
@@ -395,10 +448,10 @@ async function renderLeaderboard() {
       const chip = document.createElement("span");
       chip.className = `chip src-${u.platform}`;
       chip.textContent = u.platform;
-      const reads = document.createElement("span");
-      reads.className = "lb-reads";
-      reads.textContent = String(u.reads);
-      row.append(rank, name, chip, reads);
+      const count = document.createElement("span");
+      count.className = "lb-count";
+      count.textContent = `${u.count} ${tab.emoji}`;
+      row.append(rank, name, chip, count);
       row.addEventListener("click", () => {
         closeLeaderboard();
         openUserProfile(u.platform, { name: u.name, color: u.color });

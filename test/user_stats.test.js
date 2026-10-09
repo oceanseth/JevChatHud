@@ -102,8 +102,44 @@ test("leaderboard ranks by reads, breaks ties by messages, hides zero-read users
   const board = stats.leaderboard();
   assert.deepEqual(board.map((u) => u.name), ["Champ", "Busy", "Rare"]); // Quiet never read
   assert.deepEqual(board.map((u) => u.reads), [3, 1, 1]);
+  assert.deepEqual(board.map((u) => u.count), [3, 1, 1]); // reads board: count mirrors reads
   assert.equal(board[0].color, "#abc");
   assert.equal(stats.leaderboard(2).length, 2);
+});
+
+test("sentiment leaderboards rank by judgment-kind counts, hiding zero-count users", () => {
+  const stats = new UserStats(tmpDir());
+  const judge = (name, kind) => {
+    const m = msg(name, "whatever");
+    stats.recordMessage(m);
+    stats.recordJudgment(m, { relevancy: 50, kind });
+  };
+  judge("Troll", "toxic");
+  judge("Troll", "toxic");
+  judge("Troll", "question");
+  judge("Curious", "question");
+  judge("Curious", "question"); // ties with Troll's 1? no: Curious 2 > Troll 1
+  judge("Nice", "hype");
+
+  const toxic = stats.leaderboard(20, "toxic");
+  assert.deepEqual(toxic.map((u) => [u.name, u.count]), [["Troll", 2]]);
+
+  const questions = stats.leaderboard(20, "question");
+  assert.deepEqual(questions.map((u) => [u.name, u.count]), [["Curious", 2], ["Troll", 1]]);
+
+  // ties break toward the heavier chatter
+  stats.recordMessage(msg("Curious", "extra chatter"));
+  judge("Troll", "hype"); // Nice 1 hype vs Troll 1 hype; Troll has more messages
+  const hype = stats.leaderboard(20, "hype");
+  assert.deepEqual(hype.map((u) => u.name), ["Troll", "Nice"]);
+
+  // a kind nobody hit, and old records without kinds, produce an empty board
+  assert.deepEqual(stats.leaderboard(20, "stream_issue"), []);
+  delete stats.users[userKey("twitch", "troll")].kinds;
+  assert.deepEqual(
+    stats.leaderboard(20, "toxic").map((u) => u.name),
+    [] // Troll's record predates kind tracking; no crash, just absent
+  );
 });
 
 test("stats persist across instances via save()", () => {

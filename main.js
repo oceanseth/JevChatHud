@@ -372,7 +372,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("profile:activate", (_e, id) => activateProfile(id));
   ipcMain.handle("user:profile", (_e, { platform, name }) => userStats.get(platform, name));
-  ipcMain.handle("user:leaderboard", () => userStats.leaderboard());
+  ipcMain.handle("user:leaderboard", (_e, category) => userStats.leaderboard(20, category || "reads"));
 
   // "Jev speaks" share window + Masky account plumbing.
   const maskyClient = new MaskyClient();

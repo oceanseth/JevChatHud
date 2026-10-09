@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld("hud", {
   deleteProfile: (id) => ipcRenderer.invoke("profiles:delete", id),
   activateProfile: (id) => ipcRenderer.invoke("profile:activate", id),
   getUserProfile: (platform, name) => ipcRenderer.invoke("user:profile", { platform, name }),
-  getLeaderboard: () => ipcRenderer.invoke("user:leaderboard"),
+  getLeaderboard: (category) => ipcRenderer.invoke("user:leaderboard", category),
   requestMicAccess: () => ipcRenderer.invoke("mic:access"),
   sttStatus: () => ipcRenderer.invoke("stt:status"),
   sttRecent: () => ipcRenderer.invoke("stt:recent"),

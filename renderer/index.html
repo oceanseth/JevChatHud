@@ -405,23 +405,27 @@
     </div>
   </div>
 
-  <!-- Reading leaderboard: trophy button in the header. Counts how many times
-       each chatter's message was judged most relevant and read aloud by the
-       avatar. Rows open that chatter's profile popup. -->
+  <!-- Reading leaderboard: trophy button in the header. The main board counts
+       how many times each chatter's message was judged most relevant and read
+       aloud by the avatar; one tab per judgment kind ranks chatters by that
+       sentiment (most toxic, most questioning, …). Each tab gets its own
+       Masky-generated art washed behind the rows. Rows open that chatter's
+       profile popup. Tabs are built by app.js from LB_TABS. -->
   <div id="leaderboard-overlay" class="hidden">
     <div id="leaderboard-card">
-      <div id="leaderboard-head">
-        <span id="leaderboard-trophy">🏆</span>
-        <div id="leaderboard-title">
-          <div>Reading leaderboard</div>
-          <span class="section-note">times Jev read a chatter's message on stream</span>
+      <img id="leaderboard-bg" alt="" aria-hidden="true" />
+      <div id="leaderboard-content">
+        <div id="leaderboard-head">
+          <span id="leaderboard-trophy">🏆</span>
+          <div id="leaderboard-title">
+            <div id="leaderboard-title-text">Reading leaderboard</div>
+            <span id="leaderboard-subtitle" class="section-note">times Jev read a chatter's message on stream</span>
+          </div>
+          <button id="leaderboard-close" title="Close (Esc)">✕</button>
         </div>
-        <button id="leaderboard-close" title="Close (Esc)">✕</button>
-      </div>
-      <div id="leaderboard-rows"></div>
-      <div id="leaderboard-empty" class="section-note block hidden">
-        No readings yet. When "Jev speaks" is on, the most relevant message each
-        interval gets read aloud — its author scores a trophy here.
+        <div id="leaderboard-tabs"></div>
+        <div id="leaderboard-rows"></div>
+        <div id="leaderboard-empty" class="section-note block hidden"></div>
       </div>
     </div>
   </div>

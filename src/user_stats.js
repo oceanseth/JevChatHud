@@ -78,18 +78,26 @@ class UserStats {
   }
 
   /**
-   * Top chatters by times the avatar read their message on stream — the
-   * trophy leaderboard. Ties break toward the heavier chatter.
+   * Top chatters for the trophy popup. The default "reads" board ranks by
+   * times the avatar read their message on stream; any judgment kind (toxic,
+   * question, hype, …) ranks by that kind's count instead — the sentiment
+   * leaderboards. Ties break toward the heavier chatter; zero-count users
+   * are hidden.
    */
-  leaderboard(limit = 20) {
+  leaderboard(limit = 20, category = "reads") {
+    const count =
+      category === "reads"
+        ? (u) => u.reads || 0
+        : (u) => (u.kinds && u.kinds[category]) || 0;
     return Object.values(this.users)
-      .filter((u) => (u.reads || 0) > 0)
-      .sort((a, b) => (b.reads || 0) - (a.reads || 0) || b.messages - a.messages)
+      .filter((u) => count(u) > 0)
+      .sort((a, b) => count(b) - count(a) || b.messages - a.messages)
       .slice(0, limit)
       .map((u) => ({
         platform: u.platform,
         name: u.name,
         color: u.color || null,
+        count: count(u),
         reads: u.reads || 0,
         messages: u.messages,
         avgRelevancy: u.judged ? Math.round(u.relevancySum / u.judged) : null,
