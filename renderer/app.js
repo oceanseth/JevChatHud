@@ -15,7 +15,6 @@ const micStatusEl = document.getElementById("mic-status");
 const statusRow = document.getElementById("status-row");
 const statsEl = document.getElementById("stats");
 const judgeErrorEl = document.getElementById("judge-error");
-const pinBtn = document.getElementById("pin-btn");
 const tagChipsEl = document.getElementById("tag-chips");
 const emptyState = document.getElementById("empty-state");
 const emptyTitle = document.getElementById("empty-title");
@@ -1143,9 +1142,11 @@ document.getElementById("stt-copy-brew").addEventListener("click", () => {
   navigator.clipboard.writeText("brew install whisper-cpp");
 });
 
-pinBtn.addEventListener("click", async () => {
-  settings = await hud.updateSettings({ alwaysOnTop: !settings.alwaysOnTop });
-  pinBtn.classList.toggle("active", settings.alwaysOnTop);
+// Always-on-top lives in settings (used to be a header pin); main.js applies
+// it to the window the moment it persists.
+const alwaysOnTopCheck = document.getElementById("always-on-top");
+alwaysOnTopCheck.addEventListener("change", async () => {
+  settings = await hud.updateSettings({ alwaysOnTop: alwaysOnTopCheck.checked });
 });
 
 // ---------- settings panel ----------
@@ -1366,6 +1367,7 @@ function openSettingsPanel({ focusSources = false, focusMic = false, focusTwitch
   sizeSlider.value = a.fontSize || 13;
   sizeValue.textContent = sizeSlider.value;
   timestampsCheck.checked = !!a.timestamps;
+  alwaysOnTopCheck.checked = !!settings.alwaysOnTop;
   populateMicDevices();
   renderSttSetup();
   micTestResult.textContent = "";
@@ -2469,7 +2471,6 @@ hud.onEmotes(applyEmoteCatalog);
   factualSlider.value = settings.factualThreshold || 0;
   factualValue.textContent = factualSlider.value;
   setJevFiltering(settings.jevFiltering !== false, { animate: false, persist: false });
-  pinBtn.classList.toggle("active", settings.alwaysOnTop);
   buildTagBar();
   for (const k of settings.kindFilter || []) if (KINDS.includes(k)) selectedKinds.add(k);
   syncFilterControls();

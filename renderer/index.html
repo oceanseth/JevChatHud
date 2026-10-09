@@ -8,7 +8,6 @@
 </head>
 <body>
   <header id="topbar">
-    <img id="logo" src="assets/logo.png" alt="JevChatHud" title="JevChatHud" />
     <select id="profile-select" title="Active profile">
       <option value="">no profile</option>
     </select>
@@ -35,9 +34,6 @@
     </button>
     <button id="add-source-shortcut" class="icon-btn" title="Add a chat source">
       <img src="assets/icon-plus.png" alt="" /><span>source</span>
-    </button>
-    <button id="pin-btn" class="icon-btn" title="Always on top">
-      <img src="assets/icon-pin.png" alt="" />
     </button>
     <button id="settings-btn" class="icon-btn" title="Settings (⌘,)">
       <img src="assets/icon-gear.png" alt="" />
@@ -209,6 +205,9 @@
       </label>
       <label id="appearance-timestamps-label">
         <input type="checkbox" id="appearance-timestamps" /> show message timestamps
+      </label>
+      <label id="always-on-top-label">
+        <input type="checkbox" id="always-on-top" /> keep window always on top
       </label>
 
       <h2 id="twitch-heading">Twitch</h2>

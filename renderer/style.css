@@ -88,7 +88,6 @@ body { display: flex; flex-direction: column; }
 #mic-btn.active img { filter: none; }
 #mic-btn.active img { filter: drop-shadow(0 0 7px rgba(124, 92, 255, 0.95)); }
 #topbar select, #topbar button { -webkit-app-region: no-drag; }
-#logo { width: 22px; height: 22px; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)); }
 .spacer { flex: 1; }
 
 /* Rich image icon buttons in the top bar */
@@ -920,7 +919,7 @@ button.linklike:hover { text-decoration: underline; border: none; }
   justify-content: center;
   z-index: 20;
 }
-#leaderboard-overlay.hidden { display: none; }
+#leaderboard-overlay.hidden, #leaderboard-empty.hidden { display: none; }
 #leaderboard-card {
   background: rgba(19, 19, 30, 0.86);
   backdrop-filter: blur(28px) saturate(1.25);
@@ -949,7 +948,30 @@ button.linklike:hover { text-decoration: underline; border: none; }
   flex: 1;
   min-width: 0;
   padding: 16px;
+  /* Head + tabs stay pinned; only the rows list scrolls. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#leaderboard-rows {
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
+}
+/* Branded scrollbar: trophy-gold thumb on a glassy track. Webkit rules only —
+   setting the standard scrollbar-color would make Chromium ignore these. */
+#leaderboard-rows::-webkit-scrollbar { width: 8px; }
+#leaderboard-rows::-webkit-scrollbar-track {
+  background: rgba(8, 8, 14, 0.35);
+  border-radius: 999px;
+}
+#leaderboard-rows::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ffd968, #d99a6c);
+  border-radius: 999px;
+  border: 2px solid rgba(19, 19, 30, 0.8);
+}
+#leaderboard-rows::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #ffe694, #e6ab7d);
 }
 #leaderboard-tabs {
   display: flex;

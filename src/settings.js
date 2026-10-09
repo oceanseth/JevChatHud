@@ -43,6 +43,7 @@ const DEFAULTS = {
     timestamps: false, // show HH:MM per message
   },
   alwaysOnTop: false,
+  windowBounds: null, // last {x,y,width,height} of the HUD window; null = first launch
   // Twitch account used to SEND chat from the composer. Separate from the
   // Masky token (that one pays for renders and stores stream identity).
   twitch: {

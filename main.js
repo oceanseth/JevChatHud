@@ -1,5 +1,12 @@
 const { app, BrowserWindow, Menu, ipcMain, systemPreferences, shell, dialog, screen } = require("electron");
 const path = require("path");
+
+// Test harnesses point the app at a scratch profile; the real userData dir is
+// never touched (an APPDATA override doesn't isolate it, and moving the real
+// dir aside fails while any other instance holds it open).
+if (process.env.JEVCHATHUD_USER_DATA) {
+  app.setPath("userData", process.env.JEVCHATHUD_USER_DATA);
+}
 const { Settings } = require("./src/settings");
 const { SourceManager } = require("./src/sources");
 const { Judge } = require("./src/judge");
@@ -63,35 +70,40 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+// Windows/Linux get no menu bar at all — the header's gear covers Settings and
+// the File/Edit/View/Window strip is dead weight in a HUD. macOS keeps its
+// application menu: removing it there kills Cmd+Q/Cmd+C and dock conventions.
 function buildMenu() {
   const isMac = process.platform === "darwin";
+  if (!isMac) {
+    Menu.setApplicationMenu(null);
+    return;
+  }
   const settingsItem = {
     label: "Settings…",
     accelerator: "CmdOrCtrl+,",
     click: () => send("ui:open-settings"),
   };
   const template = [
-    ...(isMac
-      ? [{
-          label: app.name,
-          submenu: [
-            { role: "about" },
-            { type: "separator" },
-            settingsItem,
-            { type: "separator" },
-            { role: "services" },
-            { type: "separator" },
-            { role: "hide" },
-            { role: "hideOthers" },
-            { role: "unhide" },
-            { type: "separator" },
-            { role: "quit" },
-          ],
-        }]
-      : []),
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        settingsItem,
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
     {
       label: "File",
-      submenu: [settingsItem, { type: "separator" }, isMac ? { role: "close" } : { role: "quit" }],
+      submenu: [settingsItem, { type: "separator" }, { role: "close" }],
     },
     { role: "editMenu" },
     {
@@ -112,10 +124,26 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Saved bounds are only trusted if they still land on a connected display —
+// an unplugged monitor must not strand the HUD off-screen.
+function savedWindowBounds() {
+  const b = settings.get().windowBounds;
+  if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y) || !(b.width > 0) || !(b.height > 0)) return null;
+  const visible = screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    return b.x < a.x + a.width && b.x + b.width > a.x && b.y < a.y + a.height && b.y + b.height > a.y;
+  });
+  return visible ? b : null;
+}
+
 function createWindow() {
+  const saved = savedWindowBounds();
   win = new BrowserWindow({
-    width: 460,
-    height: 780,
+    // First launch is wide enough for the full header icon row to breathe;
+    // after that the user's last size and position win.
+    width: saved?.width || 560,
+    height: saved?.height || 780,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
     minWidth: 340,
     minHeight: 420,
     title: "JevChatHud",
@@ -128,6 +156,29 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  // With no menu bar on Windows/Linux the accelerators went with it; keep the
+  // handful that matter as window-local keys.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (process.platform === "darwin" || input.type !== "keyDown") return;
+    const ctrl = input.control;
+    if (input.key === "F12" || (ctrl && input.shift && input.key.toLowerCase() === "i")) {
+      win.webContents.toggleDevTools();
+      event.preventDefault();
+    } else if (ctrl && !input.shift && input.key.toLowerCase() === "r") {
+      win.webContents.reload();
+      event.preventDefault();
+    } else if (ctrl && input.key === ",") {
+      send("ui:open-settings");
+      event.preventDefault();
+    }
+  });
+  // Remember where the HUD lives. getNormalBounds ignores the transient
+  // minimized/maximized geometry so we restore the real resting spot.
+  win.on("close", () => {
+    try {
+      settings.update({ windowBounds: win.getNormalBounds() });
+    } catch {}
+  });
   // The share overlay has no chrome of its own; it lives and dies with the HUD.
   win.on("closed", () => {
     win = null;
