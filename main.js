@@ -26,6 +26,7 @@ const {
   broadcasterIdFor,
   sendChatMessage,
   DeliveryWatch,
+  TwitchAuthError,
 } = require("./src/twitch_auth");
 const { emptyCatalog, loadEmoteCatalog } = require("./src/emote_catalog");
 const { Translator } = require("./src/translator");
@@ -582,14 +583,29 @@ app.whenReady().then(() => {
     if (!tw.accessToken || !tw.userId) throw new Error("Log in with Twitch in Settings first");
     const channel = activeTwitchChannel(settings.get());
     if (!channel) throw new Error("This profile has no Twitch channel");
-    const broadcasterId = await broadcasterIdFor(tw.accessToken, channel);
-    if (!broadcasterId) throw new Error(`Twitch channel #${channel} was not found`);
-    const result = await sendChatMessage({
-      token: tw.accessToken,
-      broadcasterId,
-      senderId: tw.userId,
-      message: text,
-    });
+    let broadcasterId;
+    let result;
+    try {
+      broadcasterId = await broadcasterIdFor(tw.accessToken, channel);
+      if (!broadcasterId) throw new Error(`Twitch channel #${channel} was not found`);
+      result = await sendChatMessage({
+        token: tw.accessToken,
+        broadcasterId,
+        senderId: tw.userId,
+        message: text,
+      });
+    } catch (err) {
+      if (!(err instanceof TwitchAuthError)) throw err;
+      // Drop the dead secret but keep who they were, so the prompt can name them.
+      // Chat send uses this Twitch token only — the Masky key cannot replace it.
+      settings.update({ twitch: { ...tw, accessToken: "" } });
+      send("twitch:status", twitchView());
+      return {
+        reauth: "twitch",
+        displayName: tw.displayName || tw.login || "",
+        message: err.message,
+      };
+    }
     // Helix accepting a message is not delivery — anti-spam can hide it from
     // everyone but the sender with no error anywhere. Watch the reader for
     // the public echo and tell the composer which of the two happened.

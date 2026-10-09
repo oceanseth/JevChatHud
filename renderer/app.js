@@ -1397,9 +1397,11 @@ document.getElementById("panel-close").addEventListener("click", closeSettingsPa
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  const reauthEl = document.getElementById("reauth");
   const identityPopEl = document.getElementById("identity-pop");
   const emotePopEl = document.getElementById("emote-pop");
-  if (emotePopEl && !emotePopEl.classList.contains("hidden")) closeEmotePicker();
+  if (reauthEl && !reauthEl.classList.contains("hidden")) reauthEl.classList.add("hidden");
+  else if (emotePopEl && !emotePopEl.classList.contains("hidden")) closeEmotePicker();
   else if (identityPopEl && !identityPopEl.classList.contains("hidden")) identityPopEl.classList.add("hidden");
   else if (!leaderboardOverlay.classList.contains("hidden")) closeLeaderboard();
   else if (!userOverlay.classList.contains("hidden")) closeUserProfile();
@@ -2083,23 +2085,58 @@ function renderTwitch() {
   }
 }
 
-twitchLoginBtn.addEventListener("click", async () => {
+const reauthEl = document.getElementById("reauth");
+const reauthBody = document.getElementById("reauth-body");
+const reauthNote = document.getElementById("reauth-note");
+const reauthPending = document.getElementById("reauth-pending");
+const reauthLogin = document.getElementById("reauth-login");
+
+function openReauth({ displayName } = {}) {
+  const who = displayName || twitchAccount?.displayName || twitchAccount?.login || "";
+  reauthBody.textContent = who
+    ? `Twitch rejected the chat login for ${who}, so that message was not sent.`
+    : "Twitch rejected the chat login, so that message was not sent.";
+  reauthNote.textContent =
+    "Chat uses the Twitch account in Settings. Masky is a separate login for credits and avatars — reconnecting Masky will not fix sending, even if that Masky account was created with Twitch.";
+  reauthPending.classList.add("hidden");
+  reauthPending.textContent = "";
+  reauthEl.classList.remove("hidden");
+  reauthLogin.focus();
+}
+
+function closeReauth() {
+  reauthEl.classList.add("hidden");
+}
+
+async function beginTwitchLogin(pendingEl) {
   twitchLoginBtn.disabled = true;
-  twitchPending.classList.remove("hidden");
-  twitchPending.textContent = "Opening Twitch…";
+  reauthLogin.disabled = true;
+  pendingEl.classList.remove("hidden");
+  pendingEl.textContent = "Opening Twitch…";
   try {
     const flow = await hud.twitchLogin();
-    twitchPending.textContent = `Enter ${flow.userCode} on the Twitch page that just opened.`;
+    pendingEl.textContent = `Enter ${flow.userCode} on the Twitch page that just opened.`;
   } catch (err) {
     twitchLoginBtn.disabled = false;
-    twitchPending.textContent = err.message || String(err);
+    reauthLogin.disabled = false;
+    pendingEl.textContent = err.message || String(err);
   }
+}
+
+twitchLoginBtn.addEventListener("click", () => beginTwitchLogin(twitchPending));
+reauthLogin.addEventListener("click", () => beginTwitchLogin(reauthPending));
+document.getElementById("reauth-close").addEventListener("click", closeReauth);
+document.getElementById("reauth-dismiss").addEventListener("click", closeReauth);
+reauthEl.addEventListener("click", (e) => {
+  if (e.target === reauthEl) closeReauth();
 });
 
 twitchLogoutBtn.addEventListener("click", async () => {
   twitchAccount = await hud.twitchLogout();
   twitchPending.classList.add("hidden");
   twitchLoginBtn.disabled = false;
+  reauthLogin.disabled = false;
+  closeReauth();
   renderTwitch();
   renderCompose();
 });
@@ -2123,10 +2160,17 @@ hud.onTwitchDelivery((d) => {
 hud.onTwitchStatus((view) => {
   twitchAccount = view || { connected: false };
   twitchLoginBtn.disabled = false;
-  if (twitchAccount.connected) twitchPending.classList.add("hidden");
-  else if (twitchAccount.error) {
+  reauthLogin.disabled = false;
+  if (twitchAccount.connected) {
+    twitchPending.classList.add("hidden");
+    closeReauth();
+  } else if (twitchAccount.error) {
     twitchPending.classList.remove("hidden");
     twitchPending.textContent = twitchAccount.error;
+    if (!reauthEl.classList.contains("hidden")) {
+      reauthPending.classList.remove("hidden");
+      reauthPending.textContent = twitchAccount.error;
+    }
   }
   renderTwitch();
   renderCompose();
@@ -2145,10 +2189,21 @@ chatForm.addEventListener("submit", async (e) => {
   showChatError("");
   chatSend.disabled = true;
   try {
-    await hud.twitchSend(text);
+    const sent = await hud.twitchSend(text);
+    if (sent?.reauth === "twitch") {
+      showChatError(sent.message || "Twitch login expired — log in again to send chat");
+      openReauth(sent);
+      return;
+    }
     chatInput.replaceChildren();
   } catch (err) {
-    showChatError(err.message || String(err));
+    const msg = err.message || String(err);
+    if (/invalid oauth token|twitch login expired/i.test(msg)) {
+      showChatError("Twitch login expired — log in again to send chat");
+      openReauth({});
+    } else {
+      showChatError(msg);
+    }
   } finally {
     chatSend.disabled = !profileTwitchChannel();
     chatInput.focus();

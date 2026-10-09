@@ -8,6 +8,8 @@ const {
   pollDeviceToken,
   channelCategory,
   sendChatMessage,
+  broadcasterIdFor,
+  TwitchAuthError,
   DeliveryWatch,
 } = require("../src/twitch_auth");
 
@@ -129,6 +131,28 @@ test("sendChatMessage posts Helix chat/messages and surfaces a drop reason", asy
     sender_id: "s",
     message: "hello",
   });
+});
+
+test("broadcasterIdFor turns a Helix 401 into TwitchAuthError", async () => {
+  const fetchImpl = async () => jsonResponse({ message: "Invalid OAuth token" }, 401);
+  await assert.rejects(
+    () => broadcasterIdFor("dead", "jev", { fetchImpl }),
+    (err) => err instanceof TwitchAuthError && /log in again/.test(err.message),
+  );
+});
+
+test("sendChatMessage turns a 401 into TwitchAuthError", async () => {
+  const fetchImpl = async () => jsonResponse({ message: "Invalid OAuth token" }, 401);
+  await assert.rejects(
+    () => sendChatMessage({
+      token: "dead",
+      broadcasterId: "b",
+      senderId: "s",
+      message: "hi",
+      fetchImpl,
+    }),
+    (err) => err instanceof TwitchAuthError,
+  );
 });
 
 test("sendChatMessage returns the message id when Twitch accepts it", async () => {

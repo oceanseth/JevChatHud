@@ -33,6 +33,21 @@ function helixHeaders(token) {
   };
 }
 
+/** Helix 401. The body message is usually "Invalid OAuth token". */
+class TwitchAuthError extends Error {
+  constructor(message = "Twitch login expired — log in again to send chat") {
+    super(message);
+    this.name = "TwitchAuthError";
+    this.code = "twitch-auth";
+  }
+}
+
+function rejectedTwitchAuth(res, data) {
+  const message = String(data?.message || "");
+  if (res?.status === 401 || /invalid oauth token/i.test(message)) return new TwitchAuthError();
+  return null;
+}
+
 /** Twitch channel the active profile is ingesting, or "". */
 function activeTwitchChannel(settings) {
   const profile = (settings?.profiles || []).find((p) => p.id === settings.activeProfileId);
@@ -124,6 +139,8 @@ async function validateToken(token, { fetchImpl = fetch } = {}) {
 async function helixGet(path, token, fetchImpl) {
   const res = await fetchImpl(`${HELIX}${path}`, { headers: helixHeaders(token) });
   const data = await readJson(res);
+  const auth = rejectedTwitchAuth(res, data);
+  if (auth) throw auth;
   if (!res.ok) throw new Error(data.message || `Twitch ${res.status}`);
   return data;
 }
@@ -200,7 +217,8 @@ async function sendChatMessage({ token, broadcasterId, senderId, message, fetchI
     }),
   });
   const data = await readJson(res);
-  if (res.status === 401) throw new Error("Twitch login expired — connect again in Settings");
+  const auth = rejectedTwitchAuth(res, data);
+  if (auth) throw auth;
   if (!res.ok) throw new Error(data.message || `Twitch didn't accept that (${res.status})`);
   const row = (data.data || [])[0] || {};
   if (row.is_sent === false) {
@@ -309,4 +327,5 @@ module.exports = {
   broadcasterIdFor,
   sendChatMessage,
   helixGet,
+  TwitchAuthError,
 };

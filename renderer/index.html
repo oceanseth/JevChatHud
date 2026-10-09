@@ -215,7 +215,8 @@
 
       <h2 id="twitch-heading">Twitch</h2>
       <div class="section-note block">Log in to send messages in the Twitch channel this profile is reading.
-        Twitch shows the consent page as Masky — that's the app this HUD uses to chat.</div>
+        Twitch shows the consent page as Masky — that's the app this HUD uses to chat.
+        This login is separate from the Masky account under Jev speaks. Signing into Masky with Twitch does not sign chat in.</div>
       <div class="row" id="twitch-connect-row">
         <button type="button" id="twitch-login-btn" class="primary">Log in with Twitch</button>
         <span id="twitch-status" class="section-note">not connected</span>
@@ -405,6 +406,23 @@
 
         <h2>Stylometry <span class="soon">coming soon</span></h2>
         <div class="section-note block">Writing-style fingerprint to correlate this user with known accounts on other platforms. Message samples are already being collected.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dead Twitch chat token. Masky login cannot stand in for it. -->
+  <div id="reauth" class="hidden" role="dialog" aria-labelledby="reauth-title">
+    <div id="reauth-card">
+      <div id="reauth-head">
+        <h2 id="reauth-title">Log in to Twitch again</h2>
+        <button type="button" id="reauth-close" title="Close (Esc)">✕</button>
+      </div>
+      <p id="reauth-body"></p>
+      <p id="reauth-note" class="section-note block"></p>
+      <p id="reauth-pending" class="section-note block hidden"></p>
+      <div class="row">
+        <button type="button" id="reauth-login" class="primary">Log in with Twitch</button>
+        <button type="button" id="reauth-dismiss">Not now</button>
       </div>
     </div>
   </div>
