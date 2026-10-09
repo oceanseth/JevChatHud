@@ -1,9 +1,17 @@
 // On-device chat translation for the per-profile Language setting.
 //
-// Engine: M2M100-418M (int8 ONNX) through transformers.js, running in the
-// main process on CPU — any-to-any across every language in LANGS, no cloud
-// calls. Detection is eld (pure JS, tuned for short text). The ~480 MB model
-// downloads once, like the whisper STT engine, into ~/.cache/jevchathud.
+// Engine: M2M100-418M (int8 ONNX) through transformers.js — any-to-any across
+// every language in LANGS, no cloud calls. Detection is eld (pure JS, tuned
+// for short text). The ~480 MB model downloads once, like the whisper STT
+// engine, into ~/.cache/jevchathud.
+//
+// In the app the engine lives in a dedicated utilityProcess (translator_host)
+// at below-normal OS priority with ONNX capped to 2 threads, so inference can
+// never stall window dragging or compete with a game/encoder for cores. (The
+// 2-thread cap is also *faster* than ORT's default thread-per-core on big
+// CPUs — 32 threads thrash on a model this small. GPU was measured too:
+// DirectML segfaults on this quantized seq2seq model, and a streamer's GPU
+// belongs to the game + encoder anyway, so CPU it is.)
 //
 // Translation is best-effort everywhere: anything that fails (engine missing,
 // unreliable detection, model error) resolves to null and the caller shows or
@@ -69,6 +77,10 @@ function defaultCacheDir() {
   return path.join(os.homedir(), ".cache", "jevchathud", "translator");
 }
 
+// Measured on an i9-14900K: 2 threads ≈ 1.1 s/message vs 1.7 s at the
+// 32-thread default, at a fraction of the CPU. Streamer-friendly and faster.
+const ENGINE_THREADS = Math.max(1, Math.min(2, (os.availableParallelism?.() || 4) - 1));
+
 /** Real engine: dynamic imports because transformers.js and eld are ESM. */
 async function loadRealEngine(cacheDir, onProgress) {
   const { pipeline, env } = await import("@huggingface/transformers");
@@ -76,6 +88,7 @@ async function loadRealEngine(cacheDir, onProgress) {
   env.cacheDir = cacheDir;
   const pipe = await pipeline("translation", MODEL, {
     dtype: "q8",
+    session_options: { intraOpNumThreads: ENGINE_THREADS, interOpNumThreads: 1 },
     progress_callback: (p) => {
       if (p?.status !== "progress" || !p.total) return;
       onProgress?.({ file: p.file, loaded: p.loaded, total: p.total });
@@ -92,6 +105,40 @@ async function loadRealEngine(cacheDir, onProgress) {
       return String(t || "").trim();
     },
   };
+}
+
+/** In-app engine: the same loadRealEngine, but hosted in a utilityProcess so
+ * model load and inference never touch the main thread. `onExit` fires if the
+ * host dies after a successful load, so the Translator can respawn it. */
+async function loadUtilityEngine(cacheDir, onProgress, onExit) {
+  const { utilityProcess } = require("electron");
+  const { remoteEngine } = require("./translator_rpc");
+  const child = utilityProcess.fork(path.join(__dirname, "translator_host.js"), [cacheDir], {
+    serviceName: "JevChatHud translation engine",
+  });
+  const remote = remoteEngine(
+    { send: (msg) => child.postMessage(msg), onMessage: (fn) => child.on("message", fn) },
+    { onProgress },
+  );
+  child.on("exit", () => {
+    remote.markDead(new Error("translation engine exited"));
+    onExit?.();
+  });
+  try {
+    await remote.load(); // resolves once the model is downloaded + in memory
+  } catch (e) {
+    child.kill();
+    throw e;
+  }
+  return { detect: remote.detect, translate: remote.translate };
+}
+
+const IS_ELECTRON_MAIN = !!process.versions?.electron && process.type === "browser";
+
+function defaultLoadEngine(cacheDir, onProgress, onExit) {
+  return IS_ELECTRON_MAIN
+    ? loadUtilityEngine(cacheDir, onProgress, onExit)
+    : loadRealEngine(cacheDir, onProgress);
 }
 
 /** Coalesce tokenizeMessage output into [textRun | emote] in original order —
@@ -120,7 +167,7 @@ class Translator {
   constructor({ cacheDir, loadEngine } = {}) {
     this.cacheDir = cacheDir || defaultCacheDir();
     this.markerFile = path.join(this.cacheDir, "installed.json");
-    this.loadEngine = loadEngine || loadRealEngine;
+    this.loadEngine = loadEngine || defaultLoadEngine;
     this.engine = null;
     this.loadingPromise = null;
     this.installing = false;
@@ -178,11 +225,24 @@ class Translator {
   async ensureLoaded() {
     if (this.engine) return this.engine;
     if (!this.loadingPromise) {
-      this.loadingPromise = this.loadEngine(this.cacheDir, (p) => {
-        this.progress = p;
-        this.onProgress?.(p);
-      })
+      let loaded = null; // the engine this attempt produced, for the exit guard
+      this.loadingPromise = this.loadEngine(
+        this.cacheDir,
+        (p) => {
+          this.progress = p;
+          this.onProgress?.(p);
+        },
+        () => {
+          // Host process died after loading: forget it so the next message
+          // respawns a fresh engine instead of failing forever.
+          if (loaded && this.engine === loaded) {
+            this.engine = null;
+            this.loadingPromise = null;
+          }
+        },
+      )
         .then((engine) => {
+          loaded = engine;
           this.engine = engine;
           this.progress = null;
           fs.mkdirSync(this.cacheDir, { recursive: true });
@@ -264,7 +324,12 @@ class Translator {
     } catch {
       return null;
     }
-    const det = engine.detect(line);
+    let det;
+    try {
+      det = await engine.detect(line);
+    } catch {
+      return null;
+    }
     if (!det.lang || det.lang === tgt || !det.reliable) return null;
     try {
       const out = await this._enqueue(() => this._translateRun(line, det.lang, tgt), { priority });
@@ -310,7 +375,12 @@ class Translator {
     } catch {
       return null;
     }
-    const det = engine.detect(textRuns.map((r) => r.text.trim()).join(" "));
+    let det;
+    try {
+      det = await engine.detect(textRuns.map((r) => r.text.trim()).join(" "));
+    } catch {
+      return null;
+    }
     if (!det.lang || det.lang === tgt || !det.reliable) return null;
     let changed = false;
     const segments = [];
@@ -357,4 +427,4 @@ class Translator {
   }
 }
 
-module.exports = { Translator, LANGS, SAYS, MODEL, MODEL_MB };
+module.exports = { Translator, LANGS, SAYS, MODEL, MODEL_MB, loadRealEngine };

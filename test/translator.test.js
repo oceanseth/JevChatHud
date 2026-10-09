@@ -115,6 +115,29 @@ test("a flooded queue drops display translations instead of queueing forever", a
   t.working = false;
 });
 
+test("a dead engine host is forgotten and respawned on the next line", async () => {
+  const dir = tmpCache();
+  fs.writeFileSync(path.join(dir, "installed.json"), "{}");
+  let loads = 0;
+  let exitCb = null;
+  const t = new Translator({
+    cacheDir: dir,
+    loadEngine: async (cacheDir, onProgress, onExit) => {
+      loads++;
+      exitCb = onExit;
+      return {
+        detect: () => ({ lang: "es", reliable: true }),
+        translate: async (text, src, tgt) => `[${tgt}#${loads}]${text}`,
+      };
+    },
+  });
+  assert.equal((await t.translateText("hola amigos", "en")).text, "[en#1]hola amigos");
+  exitCb(); // the utility process died
+  assert.equal(t.engine, null);
+  assert.equal((await t.translateText("adios amigos", "en")).text, "[en#2]adios amigos");
+  assert.equal(loads, 2);
+});
+
 test("messages that are only emotes or whitespace are left alone", async () => {
   const { t, eng } = makeTranslator();
   t.setEmoteNames(new Map([["Kappa", { name: "Kappa", url: "u", source: "7tv", id: "1" }]]));
