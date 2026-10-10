@@ -1,6 +1,6 @@
 {
   "name": "jevchathud",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Realtime chat HUD for livestreamers: TypeSafe (Jev) judges incoming chat from Twitch, Discord, YouTube, and Facebook so only messages worth the streamer's attention surface.",
   "main": "main.js",
   "scripts": {
