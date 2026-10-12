@@ -40,13 +40,19 @@ function relClass(rel) {
   return "low";
 }
 
-function applyFilter(row) {
-  const visible = messageVisible(row._judgment, {
+// The visibility policy inputs as currently set in the UI — what the feed
+// filters by, and what the composer preview greys against.
+function feedView() {
+  return {
     filtering: jevFiltering,
     kinds: [...selectedKinds],
     relevancyMin: Number(relevancySlider.value),
     factualMin: Number(factualSlider.value),
-  });
+  };
+}
+
+function applyFilter(row) {
+  const visible = messageVisible(row._judgment, feedView());
   row.classList.toggle("hidden-by-filter", !visible);
   if (visible) checkClamp(row);
 }
@@ -67,6 +73,9 @@ function toggleExpanded(row) {
 
 function refilterAll() {
   for (const row of rows.values()) applyFilter(row);
+  // The composer preview greys against the same thresholds — keep it honest
+  // when the sliders or tag filters move under an already-judged draft.
+  renderComposePreview();
 }
 
 let emoteByName = new Map();
@@ -1998,6 +2007,7 @@ function renderCompose() {
   chatInput.contentEditable = channel ? "true" : "false";
   chatSend.disabled = !channel;
   chatInput.dataset.placeholder = channel ? "Send a message" : "Add a Twitch channel to this profile";
+  schedulePreview();
 }
 
 // ---------- rich composer (contenteditable) ----------
@@ -2058,6 +2068,7 @@ chatInput.addEventListener("paste", (e) => {
     sel.removeAllRanges();
     sel.addRange(range);
   }
+  schedulePreview();
 });
 chatInput.addEventListener("drop", (e) => e.preventDefault());
 
@@ -2065,7 +2076,107 @@ chatInput.addEventListener("drop", (e) => e.preventDefault());
 // the :empty placeholder — sweep it so empty really means empty.
 chatInput.addEventListener("input", () => {
   if (!chatInput.textContent.trim() && !chatInput.querySelector("img")) chatInput.replaceChildren();
+  schedulePreview();
 });
+
+// ---------- pre-send judgment preview ----------
+// After a typing pause the draft goes through the Judge exactly as the sent
+// message would; the verdict (kind tag + r/f scores) shows under the composer
+// and the compose box greys when the draft would fail the current filters.
+
+const chatPreview = document.getElementById("chat-preview");
+const PREVIEW_DEBOUNCE_MS = 700;
+let previewTimer = null;
+let previewGen = 0;
+let previewedText = ""; // the draft the shown judgment belongs to
+let previewJudgment = null;
+let previewPending = false;
+
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  const text = composeText().trim();
+  if (!text || !profileTwitchChannel()) {
+    previewJudgment = null;
+    previewedText = "";
+    previewPending = false;
+    renderComposePreview();
+    return;
+  }
+  if (text === previewedText) {
+    renderComposePreview();
+    return;
+  }
+  previewTimer = setTimeout(async () => {
+    const gen = ++previewGen;
+    previewPending = true;
+    renderComposePreview();
+    const judgment = await hud.judgePreview(text).catch(() => null);
+    if (gen !== previewGen) return; // a newer draft is already in flight
+    previewPending = false;
+    if (judgment) {
+      previewedText = text;
+      previewJudgment = judgment;
+    } else {
+      // No key or a judge error: nothing to show, and leave previewedText
+      // unset so the same draft gets retried on the next keystroke pause.
+      previewedText = "";
+      previewJudgment = null;
+    }
+    if (composeText().trim() !== text) previewJudgment = null;
+    renderComposePreview();
+  }, PREVIEW_DEBOUNCE_MS);
+}
+
+function previewHiddenReason(j, view) {
+  if (view.kinds.length) return "hidden by your tag filter";
+  if (j.relevancy < view.relevancyMin) return `relevancy below your ${view.relevancyMin} bar — won't show in the feed`;
+  if (view.factualMin > 0 && !(j.factuality != null && j.factuality >= view.factualMin)) {
+    return `factual score below your ${view.factualMin} bar — won't show in the feed`;
+  }
+  return "won't show in the feed";
+}
+
+function renderComposePreview() {
+  const hasDraft = !!composeText().trim();
+  const j = hasDraft ? previewJudgment : null;
+  // Chips for a superseded draft dim while the fresh verdict is in flight.
+  chatPreview.classList.toggle("pending", previewPending);
+  if (!j) {
+    chatForm.classList.remove("judged-out");
+    chatPreview.replaceChildren();
+    if (hasDraft && previewPending) {
+      const note = document.createElement("span");
+      note.className = "preview-note";
+      note.textContent = "Jev is sizing it up…";
+      chatPreview.append(note);
+      chatPreview.classList.remove("hidden");
+    } else {
+      chatPreview.classList.add("hidden");
+    }
+    return;
+  }
+  const view = feedView();
+  const visible = messageVisible(j, view);
+  chatForm.classList.toggle("judged-out", !visible);
+
+  const kindChip = document.createElement("span");
+  kindChip.className = `chip kind-${j.kind}`;
+  kindChip.textContent = j.kind.replace("_", " ");
+  kindChip.title = `confidence ${j.kindConfidence.toFixed(2)}`;
+  const relChip = document.createElement("span");
+  relChip.className = `chip rel ${relClass(j.relevancy)}`;
+  relChip.textContent = `r${j.relevancy}`;
+  relChip.title = `relevancy ${j.relevancy}/100 (confidence ${j.relevanceConfidence.toFixed(2)})`;
+  const factChip = document.createElement("span");
+  factChip.className = `chip rel ${relClass(j.factuality)}`;
+  factChip.textContent = `f${j.factuality}`;
+  factChip.title = `factual ${j.factuality}/100 (confidence ${j.factualConfidence.toFixed(2)})`;
+  const note = document.createElement("span");
+  note.className = "preview-note";
+  note.textContent = visible ? "would show in your feed" : previewHiddenReason(j, view);
+  chatPreview.replaceChildren(kindChip, relChip, factChip, note);
+  chatPreview.classList.remove("hidden");
+}
 
 function renderTwitch() {
   const tw = twitchAccount || {};
@@ -2196,6 +2307,7 @@ chatForm.addEventListener("submit", async (e) => {
       return;
     }
     chatInput.replaceChildren();
+    schedulePreview();
   } catch (err) {
     const msg = err.message || String(err);
     if (/invalid oauth token|twitch login expired/i.test(msg)) {
@@ -2590,6 +2702,7 @@ function pickEmote(em) {
   sel.removeAllRanges();
   sel.addRange(range);
   chatInput.focus();
+  schedulePreview();
 }
 
 emoteBtn.addEventListener("click", () => {

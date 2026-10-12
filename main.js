@@ -616,6 +616,21 @@ app.whenReady().then(() => {
     return { ...result, channel };
   });
 
+  // Pre-send preview: judge the composer draft exactly as a real send would be
+  // judged (same context window), without it entering the feed or the context.
+  ipcMain.handle("judge:preview", (_e, text) => {
+    const draft = String(text || "").trim().slice(0, 500);
+    if (!draft) return null;
+    const tw = settings.get().twitch || {};
+    return judge.preview({
+      id: `draft-${Date.now()}`,
+      text: draft,
+      user: { name: tw.displayName || tw.login || "you" },
+      source: { type: "twitch" },
+      ts: Date.now(),
+    });
+  });
+
   // 7TV / BTTV / FFZ / Helix catalog for painting names as images and the picker.
   let emoteCatalog = emptyCatalog();
   let emoteGen = 0;

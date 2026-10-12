@@ -158,6 +158,10 @@
       </button>
       <button type="submit" id="chat-send">Chat</button>
     </form>
+    <!-- Pre-send verdict: after a typing pause the draft is judged like real
+         chat, and its tag + r/f scores show here with the feed's chip styling.
+         The compose box dims when the draft would fail the current filters. -->
+    <div id="chat-preview" class="hidden"></div>
     <div id="chat-error" class="hidden"></div>
   </div>
 

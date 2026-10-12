@@ -42,6 +42,21 @@ const KIND_CRITERIA = {
   toxic: "Insults, harassment, spam, or bait the streamer should not engage with.",
 };
 
+// Raw answers for `messages[i]` → the judgment object the HUD consumes.
+function judgmentFromAnswers(answers, i) {
+  const rel = answers[`m${i}_relevance`];
+  const factual = answers[`m${i}_factual`];
+  const kind = answers[`m${i}_kind`];
+  return {
+    relevancy: Math.round((rel.score / (RELEVANCE_LEVELS.length - 1)) * 100),
+    relevanceConfidence: rel.confidence,
+    factuality: Math.round((factual.score / (FACTUAL_LEVELS.length - 1)) * 100),
+    factualConfidence: factual.confidence,
+    kind: kind.choice,
+    kindConfidence: kind.confidence,
+  };
+}
+
 class Judge {
   /**
    * @param {object} opts
@@ -135,20 +150,7 @@ class Judge {
         model: config.model || "jev-latest",
         questions,
       });
-      batch.forEach((m, i) => {
-        const rel = response.answers[`m${i}_relevance`];
-        const factual = response.answers[`m${i}_factual`];
-        const kind = response.answers[`m${i}_kind`];
-        const maxLevel = RELEVANCE_LEVELS.length - 1;
-        this.onJudged(m.id, {
-          relevancy: Math.round((rel.score / maxLevel) * 100),
-          relevanceConfidence: rel.confidence,
-          factuality: Math.round((factual.score / (FACTUAL_LEVELS.length - 1)) * 100),
-          factualConfidence: factual.confidence,
-          kind: kind.choice,
-          kindConfidence: kind.confidence,
-        });
-      });
+      batch.forEach((m, i) => this.onJudged(m.id, judgmentFromAnswers(response.answers, i)));
       this.stats.judged += batch.length;
       this.stats.requests++;
       const inputTokens = response.usage?.input_tokens || 0;
@@ -168,6 +170,40 @@ class Judge {
       }
       this.onStats(this.stats);
       if (this.queue.length) this.flush();
+    }
+  }
+
+  /**
+   * Judge one drafted message the streamer is about to send — the composer's
+   * pre-send preview. Runs outside the batch pipeline: the draft sees the same
+   * recent-chat/speech context a real send would, but is not chat itself, so
+   * it never enters `recent` and never counts as judged. Returns the judgment,
+   * or null when no key is configured or the request fails (both recorded in
+   * stats like any other judge outcome).
+   */
+  async preview(msg) {
+    const config = this.getConfig();
+    if (!config.typesafeApiKey) return null;
+    try {
+      const client = this.client || (this.client = new TypeSafeClient({ apiKey: config.typesafeApiKey }));
+      const { state, questions } = this.buildRequest([msg]);
+      const response = await client.systemOne({
+        state,
+        model: config.model || "jev-latest",
+        questions,
+      });
+      this.stats.requests++;
+      const inputTokens = response.usage?.input_tokens || 0;
+      this.stats.inputTokens += inputTokens;
+      this.stats.costUsd += (inputTokens / 1e6) * PRICE_PER_MTOK;
+      this.onStats(this.stats);
+      return judgmentFromAnswers(response.answers, 0);
+    } catch (err) {
+      this.client = null;
+      this.stats.errors++;
+      this.stats.lastError = String(err.message || err);
+      this.onStats(this.stats);
+      return null;
     }
   }
 

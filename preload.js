@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld("hud", {
   twitchLogin: () => ipcRenderer.invoke("twitch:login"),
   twitchLogout: () => ipcRenderer.invoke("twitch:logout"),
   twitchSend: (text) => ipcRenderer.invoke("twitch:send", text),
+  judgePreview: (text) => ipcRenderer.invoke("judge:preview", text),
   onTwitchPending: on("twitch:pending"),
   onTwitchStatus: on("twitch:status"),
   onTwitchDelivery: on("twitch:delivery"),
