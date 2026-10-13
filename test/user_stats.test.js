@@ -142,6 +142,60 @@ test("sentiment leaderboards rank by judgment-kind counts, hiding zero-count use
   );
 });
 
+test("confident technique flags accumulate; none / low-confidence / legacy judgments don't", () => {
+  const stats = new UserStats(tmpDir());
+  const judge = (name, judgment) => {
+    const m = msg(name, "whatever");
+    stats.recordMessage(m);
+    stats.recordJudgment(m, judgment);
+  };
+  judge("Sly", { relevancy: 50, kind: "chatter", technique: "reputation_attack", techniqueConfidence: 0.9 });
+  judge("Sly", { relevancy: 50, kind: "chatter", technique: "reputation_attack", techniqueConfidence: 0.7 });
+  judge("Sly", { relevancy: 50, kind: "chatter", technique: "coercion", techniqueConfidence: 0.8 });
+  judge("Sly", { relevancy: 50, kind: "chatter", technique: "none", techniqueConfidence: 0.99 }); // none never counts
+  judge("Sly", { relevancy: 50, kind: "chatter", technique: "vagueness", techniqueConfidence: 0.5 }); // at the bar, not over it
+  judge("Sly", { relevancy: 50, kind: "chatter" }); // legacy judgment predating the safety battery
+
+  const p = stats.get("twitch", "sly");
+  assert.equal(p.judged, 6);
+  assert.deepEqual(p.techniques, { reputation_attack: 2, coercion: 1 });
+
+  // a record that never earned a flag still exposes an empty map
+  judge("Saint", { relevancy: 80, kind: "feedback", technique: "none", techniqueConfidence: 0.9 });
+  assert.deepEqual(stats.get("twitch", "saint").techniques, {});
+});
+
+test('fallacy leaderboards: "technique:<family>" ranks by confident flags', () => {
+  const stats = new UserStats(tmpDir());
+  const judge = (name, technique) => {
+    const m = msg(name, "whatever");
+    stats.recordMessage(m);
+    stats.recordJudgment(m, { relevancy: 50, kind: "chatter", technique, techniqueConfidence: 0.9 });
+  };
+  judge("AdHom", "reputation_attack");
+  judge("AdHom", "reputation_attack");
+  judge("Sly", "reputation_attack");
+  judge("Sly", "coercion");
+  judge("Nice", "none");
+
+  const board = stats.leaderboard(20, "technique:reputation_attack");
+  assert.deepEqual(board.map((u) => [u.name, u.count]), [["AdHom", 2], ["Sly", 1]]);
+  assert.deepEqual(stats.leaderboard(20, "technique:coercion").map((u) => u.name), ["Sly"]);
+  assert.deepEqual(stats.leaderboard(20, "technique:distraction"), []); // nobody flagged
+
+  // ties break toward the heavier chatter, same as every other board
+  stats.recordMessage(msg("Sly", "extra chatter"));
+  judge("Nice", "coercion");
+  assert.deepEqual(stats.leaderboard(20, "technique:coercion").map((u) => u.name), ["Sly", "Nice"]);
+
+  // records persisted before technique tracking: no crash, just absent
+  delete stats.users[userKey("twitch", "adhom")].techniques;
+  assert.deepEqual(
+    stats.leaderboard(20, "technique:reputation_attack").map((u) => u.name),
+    ["Sly"]
+  );
+});
+
 test("stats persist across instances via save()", () => {
   const dir = tmpDir();
   const stats = new UserStats(dir);

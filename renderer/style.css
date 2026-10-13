@@ -1217,6 +1217,23 @@ button.linklike:hover { text-decoration: underline; border: none; }
 .lb-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-count { font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* Fallacy drill-down: the Fallacies tab lists technique families as cards;
+   clicking one opens that family's leaderboard, ‹ in the head goes back. */
+#leaderboard-back.hidden { display: none; }
+#leaderboard-back {
+  padding: 2px 10px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-dim);
+  border-color: transparent;
+}
+#leaderboard-back:hover { color: var(--text); border-color: var(--border); }
+.lb-family-emoji { font-size: 20px; flex-shrink: 0; filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5)); }
+.lb-family-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.lb-family-name { font-weight: 600; }
+.lb-family-desc { font-size: 11px; color: var(--text-dim); }
+.lb-family-arrow { flex-shrink: 0; font-size: 18px; color: var(--text-dim); }
+
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .stat {
   border: 1px solid var(--border);
@@ -1254,6 +1271,11 @@ button.linklike:hover { text-decoration: underline; border: none; }
   color: var(--text-dim);
   flex-shrink: 0;
 }
+
+/* Manipulation-lens rail: same red as the feed's technique chip; the longer
+   family labels need a wider name column than the kind tags. */
+.trait-row.technique { --kc: #ff9e9e; }
+#user-techniques .trait-name { width: 140px; }
 
 #user-big5 .trait-row { opacity: 0.5; }
 #user-big5 .trait-bar { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.07) 0 4px, transparent 4px 8px); }

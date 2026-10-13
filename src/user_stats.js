@@ -9,6 +9,11 @@ const path = require("path");
 const SAVE_DEBOUNCE_MS = 3000;
 const MAX_USERS = 20000; // evict least-recently-seen beyond this
 const MAX_SAMPLES = 10; // recent raw messages kept per user (future stylometry)
+// Technique flags are counted only when the judge is confident — the same bar
+// the renderer uses to show the red technique chip (filter.js
+// KIND_CONFIDENCE_MIN), so the fallacy leaderboards rank exactly the flags
+// users actually saw.
+const TECHNIQUE_CONFIDENCE_MIN = 0.5;
 
 function userKey(platform, name) {
   return `${platform}:${String(name || "").toLowerCase()}`;
@@ -61,6 +66,14 @@ class UserStats {
     u.judged++;
     u.relevancySum += judgment.relevancy;
     u.kinds[judgment.kind] = (u.kinds[judgment.kind] || 0) + 1;
+    if (
+      judgment.technique &&
+      judgment.technique !== "none" &&
+      judgment.techniqueConfidence > TECHNIQUE_CONFIDENCE_MIN
+    ) {
+      if (!u.techniques) u.techniques = {}; // records predating the fallacy boards
+      u.techniques[judgment.technique] = (u.techniques[judgment.technique] || 0) + 1;
+    }
     this.scheduleSave();
   }
 
@@ -81,14 +94,17 @@ class UserStats {
    * Top chatters for the trophy popup. The default "reads" board ranks by
    * times the avatar read their message on stream; any judgment kind (toxic,
    * question, hype, …) ranks by that kind's count instead — the sentiment
-   * leaderboards. Ties break toward the heavier chatter; zero-count users
-   * are hidden.
+   * leaderboards — and "technique:<family>" ranks by confident fallacy /
+   * manipulation-technique flags (who uses ad hominem the most?). Ties break
+   * toward the heavier chatter; zero-count users are hidden.
    */
   leaderboard(limit = 20, category = "reads") {
     const count =
       category === "reads"
         ? (u) => u.reads || 0
-        : (u) => (u.kinds && u.kinds[category]) || 0;
+        : category.startsWith("technique:")
+          ? (u) => (u.techniques && u.techniques[category.slice("technique:".length)]) || 0
+          : (u) => (u.kinds && u.kinds[category]) || 0;
     return Object.values(this.users)
       .filter((u) => count(u) > 0)
       .sort((a, b) => count(b) - count(a) || b.messages - a.messages)
@@ -119,6 +135,7 @@ class UserStats {
     return {
       ...u,
       kindPct,
+      techniques: u.techniques || {}, // records predating the fallacy boards
       reads: u.reads || 0, // records predating the reads counter
       avgRelevancy: u.judged ? Math.round(u.relevancySum / u.judged) : null,
     };
@@ -151,4 +168,4 @@ class UserStats {
   }
 }
 
-module.exports = { UserStats, userKey, MAX_SAMPLES, MAX_USERS };
+module.exports = { UserStats, userKey, MAX_SAMPLES, MAX_USERS, TECHNIQUE_CONFIDENCE_MIN };

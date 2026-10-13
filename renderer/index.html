@@ -420,6 +420,9 @@
         <h2>Classification profile <span class="section-note">share of judged messages per Jev tag</span></h2>
         <div id="user-kinds"></div>
 
+        <h2>Manipulation lens <span class="section-note">confident technique flags · a lens, not a verdict</span></h2>
+        <div id="user-techniques"></div>
+
         <h2>Personality · Big 5 <span class="soon">coming soon</span></h2>
         <div id="user-big5"></div>
         <div class="section-note block">Trait estimates will accumulate from this user's message history.</div>
@@ -450,7 +453,9 @@
   <!-- Reading leaderboard: trophy button in the header. The main board counts
        how many times each chatter's message was judged most relevant and read
        aloud by the avatar; one tab per judgment kind ranks chatters by that
-       sentiment (most toxic, most questioning, …). Each tab gets its own
+       sentiment (most toxic, most questioning, …). The Fallacies tab is an
+       index of technique families (LB_TECHNIQUES) that drills into one board
+       per family — who uses ad hominem the most. Each board gets its own
        Masky-generated art washed behind the rows. Rows open that chatter's
        profile popup. Tabs are built by app.js from LB_TABS. -->
   <div id="leaderboard-overlay" class="hidden">
@@ -458,6 +463,7 @@
       <img id="leaderboard-bg" alt="" aria-hidden="true" />
       <div id="leaderboard-content">
         <div id="leaderboard-head">
+          <button id="leaderboard-back" class="hidden" title="All fallacies (Esc)">‹</button>
           <span id="leaderboard-trophy">🏆</span>
           <div id="leaderboard-title">
             <div id="leaderboard-title-text">Reading leaderboard</div>

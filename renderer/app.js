@@ -273,6 +273,7 @@ const userCardName = document.getElementById("user-card-name");
 const userCardPlatform = document.getElementById("user-card-platform");
 const userObserved = document.getElementById("user-observed");
 const userKinds = document.getElementById("user-kinds");
+const userTechniques = document.getElementById("user-techniques");
 const userBig5 = document.getElementById("user-big5");
 
 const BIG5_TRAITS = ["Openness", "Conscientiousness", "Extraversion", "Agreeableness", "Neuroticism"];
@@ -351,6 +352,26 @@ function renderUserProfile(profile) {
     )
   );
 
+  // Manipulation lens: only families actually flagged for this user, as a
+  // share of their judged messages. A clean record reads as a quiet note, not
+  // eight empty bars.
+  const flagged = LB_TECHNIQUES.filter((t) => (profile.techniques || {})[t.id] > 0);
+  if (flagged.length) {
+    userTechniques.replaceChildren(
+      ...flagged.map((t) =>
+        traitRow(t.label, Math.round((profile.techniques[t.id] / profile.judged) * 100), {
+          kindClass: "technique",
+          count: profile.techniques[t.id],
+        })
+      )
+    );
+  } else {
+    const none = document.createElement("div");
+    none.className = "section-note block";
+    none.textContent = "No manipulation techniques flagged. Straight talker.";
+    userTechniques.replaceChildren(none);
+  }
+
   userBig5.replaceChildren(...BIG5_TRAITS.map((t) => traitRow(t, null)));
 }
 
@@ -367,6 +388,7 @@ async function openUserProfile(platform, user) {
     relevancySum: 0,
     kinds: {},
     kindPct: {},
+    techniques: {},
     avgRelevancy: null,
   };
   openUser = { platform, name: user.name };
@@ -402,6 +424,7 @@ const leaderboardTabs = document.getElementById("leaderboard-tabs");
 const leaderboardTitleText = document.getElementById("leaderboard-title-text");
 const leaderboardSubtitle = document.getElementById("leaderboard-subtitle");
 const leaderboardTrophy = document.getElementById("leaderboard-trophy");
+const leaderboardBack = document.getElementById("leaderboard-back");
 
 // One tab per board: the main reads board plus every judgment kind. `id`
 // matches the UserStats category; the art lives at assets/leaderboard/<id>.jpg.
@@ -414,8 +437,24 @@ const LB_TABS = [
   { id: "personal", emoji: "💜", label: "Personal", title: "Most heartfelt", subtitle: "sharing something personal or emotionally significant", empty: "Nothing personal shared yet." },
   { id: "hype", emoji: "🔥", label: "Hype", title: "Hype squad", subtitle: "hype, praise, emotes, and generic reactions", empty: "No hype judged yet. Dead chat?" },
   { id: "chatter", emoji: "💬", label: "Chatter", title: "Chattiest", subtitle: "small talk and chatter aimed at other chatters", empty: "No chatter judged yet." },
+  { id: "fallacies", emoji: "🎭", label: "Fallacies", title: "Fallacy leaderboards", subtitle: "who leans on which manipulation technique — pick a family", empty: "" },
+];
+// The fallacies tab drills down: one board per detected technique family
+// (judge.js TECHNIQUE_CRITERIA), counting only confident flags — the same ones
+// that earned a red chip in the feed. `subtitle` doubles as the index-card
+// description, naming the classic fallacies each family covers.
+const LB_TECHNIQUES = [
+  { id: "loaded_language", emoji: "🧨", label: "loaded language", title: "Loaded language", subtitle: "emotionally loaded or triggering wording, exaggeration, fear and outrage bait", empty: "No loaded-language flags yet." },
+  { id: "reputation_attack", emoji: "🗡️", label: "reputation attack", title: "Reputation attacks", subtitle: "ad hominem, name-calling, smears, mockery, guilt by association", empty: "No reputation attacks flagged yet." },
+  { id: "false_logic", emoji: "🌀", label: "false logic", title: "False logic", subtitle: "false dilemma, strawman, causal oversimplification, bogus appeals to authority or popularity", empty: "No faulty logic flagged yet." },
+  { id: "distraction", emoji: "🪄", label: "distraction", title: "Distraction", subtitle: "whataboutism, red herrings, abrupt topic shifts", empty: "No distraction flags yet." },
+  { id: "presupposition", emoji: "🪤", label: "smuggled assumption", title: "Smuggled assumptions", subtitle: "loaded questions and presupposed premises never actually established", empty: "No smuggled assumptions flagged yet." },
+  { id: "vagueness", emoji: "🌫️", label: "vagueness", title: "Strategic vagueness", subtitle: "weasel words, undefined quantifiers, claims too slippery to pin down", empty: "No vagueness flags yet." },
+  { id: "coercion", emoji: "⛓️", label: "coercion", title: "Coercive pressure", subtitle: "guilt-tripping, shaming, threats, intimidation, gaslighting, playing the victim", empty: "No coercion flagged yet. Wholesome." },
+  { id: "call_to_action", emoji: "📣", label: "outcome push", title: "Outcome pushers", subtitle: "pressure to follow, raid, donate, ban, or boycott rather than saying something", empty: "No outcome pushes flagged yet." },
 ];
 let lbActiveTab = LB_TABS[0];
+let lbTechnique = null; // non-null = drilled into one family's board on the fallacies tab
 
 function buildLeaderboardTabs() {
   leaderboardTabs.replaceChildren(
@@ -431,8 +470,9 @@ function buildLeaderboardTabs() {
       label.textContent = tab.label;
       btn.append(emoji, label);
       btn.addEventListener("click", () => {
-        if (lbActiveTab === tab) return;
+        if (lbActiveTab === tab && !lbTechnique) return;
         lbActiveTab = tab;
+        lbTechnique = null; // re-clicking Fallacies while drilled returns to the index
         renderLeaderboard();
       });
       return btn;
@@ -441,18 +481,55 @@ function buildLeaderboardTabs() {
 }
 buildLeaderboardTabs();
 
+// The fallacies tab's index: one card per technique family, drilling into
+// that family's board ("who uses ad hominem the most?").
+function renderFallacyIndex() {
+  leaderboardEmpty.classList.add("hidden");
+  leaderboardRows.replaceChildren(
+    ...LB_TECHNIQUES.map((tech) => {
+      const row = document.createElement("button");
+      row.className = "lb-row lb-family";
+      const emoji = document.createElement("span");
+      emoji.className = "lb-family-emoji";
+      emoji.textContent = tech.emoji;
+      const text = document.createElement("span");
+      text.className = "lb-family-text";
+      const name = document.createElement("span");
+      name.className = "lb-family-name";
+      name.textContent = tech.title;
+      const desc = document.createElement("span");
+      desc.className = "lb-family-desc";
+      desc.textContent = tech.subtitle;
+      text.append(name, desc);
+      const arrow = document.createElement("span");
+      arrow.className = "lb-family-arrow";
+      arrow.textContent = "›";
+      row.append(emoji, text, arrow);
+      row.addEventListener("click", () => {
+        lbTechnique = tech;
+        renderLeaderboard();
+      });
+      return row;
+    })
+  );
+}
+
 async function renderLeaderboard() {
   const tab = lbActiveTab;
-  leaderboardTrophy.textContent = tab.emoji;
-  leaderboardTitleText.textContent = tab.title;
-  leaderboardSubtitle.textContent = tab.subtitle;
-  leaderboardBg.src = `assets/leaderboard/${tab.id}.jpg`;
+  const tech = lbTechnique;
+  const view = tech || tab; // whichever board (or index) owns the title and art
+  leaderboardBack.classList.toggle("hidden", !tech);
+  leaderboardTrophy.textContent = view.emoji;
+  leaderboardTitleText.textContent = view.title;
+  leaderboardSubtitle.textContent = view.subtitle;
+  leaderboardBg.src = `assets/leaderboard/${view.id}.jpg`;
   for (const btn of leaderboardTabs.children) {
     btn.classList.toggle("active", btn.dataset.tab === tab.id);
   }
-  const entries = (await hud.getLeaderboard(tab.id)) || [];
-  if (tab !== lbActiveTab) return; // user switched tabs while we fetched
-  leaderboardEmpty.textContent = tab.empty;
+  if (tab.id === "fallacies" && !tech) return renderFallacyIndex();
+  const entries = (await hud.getLeaderboard(tech ? `technique:${tech.id}` : tab.id)) || [];
+  if (tab !== lbActiveTab || tech !== lbTechnique) return; // user navigated while we fetched
+  leaderboardEmpty.textContent = view.empty;
   leaderboardEmpty.classList.toggle("hidden", entries.length > 0);
   leaderboardRows.replaceChildren(
     ...entries.map((u, i) => {
@@ -473,7 +550,7 @@ async function renderLeaderboard() {
       chip.textContent = u.platform;
       const count = document.createElement("span");
       count.className = "lb-count";
-      count.textContent = `${u.count} ${tab.emoji}`;
+      count.textContent = `${u.count} ${view.emoji}`;
       row.append(rank, name, chip, count);
       row.addEventListener("click", () => {
         closeLeaderboard();
@@ -495,6 +572,10 @@ function closeLeaderboard() {
 
 document.getElementById("trophy-btn").addEventListener("click", openLeaderboard);
 document.getElementById("leaderboard-close").addEventListener("click", closeLeaderboard);
+leaderboardBack.addEventListener("click", () => {
+  lbTechnique = null;
+  renderLeaderboard();
+});
 leaderboardOverlay.addEventListener("click", (e) => {
   if (e.target === leaderboardOverlay) closeLeaderboard();
 });
@@ -1441,7 +1522,13 @@ document.addEventListener("keydown", (e) => {
   if (reauthEl && !reauthEl.classList.contains("hidden")) reauthEl.classList.add("hidden");
   else if (emotePopEl && !emotePopEl.classList.contains("hidden")) closeEmotePicker();
   else if (identityPopEl && !identityPopEl.classList.contains("hidden")) identityPopEl.classList.add("hidden");
-  else if (!leaderboardOverlay.classList.contains("hidden")) closeLeaderboard();
+  else if (!leaderboardOverlay.classList.contains("hidden")) {
+    // Esc drills up out of a fallacy board before it closes the popup.
+    if (lbTechnique) {
+      lbTechnique = null;
+      renderLeaderboard();
+    } else closeLeaderboard();
+  }
   else if (!userOverlay.classList.contains("hidden")) closeUserProfile();
   else if (!overlay.classList.contains("hidden")) closeSettingsPanel();
 });
