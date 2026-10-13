@@ -1,7 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { VoiceMirror, splitSentences, MAX_IN_FLIGHT, MAX_JOBS } = require("../src/voice_mirror");
-const { MaskyError } = require("../src/masky");
+const { VoiceMirror, splitSentences, packLines, MAX_IN_FLIGHT, MAX_JOBS } = require("../src/voice_mirror");
+const { MaskyError, PRICING } = require("../src/masky");
 
 test("splitSentences hands back complete sentences and keeps the fragment", () => {
   assert.deepEqual(splitSentences("Hello there. How are"), {
@@ -62,11 +62,31 @@ const CFG = {
 
 const tick = () => new Promise((r) => setImmediate(r));
 
+test("packLines keeps one breath together and splits only at the char cap", () => {
+  assert.deepEqual(packLines(["No.", "I don't do drugs."]), ["No. I don't do drugs."]);
+  const big = "x".repeat(300) + ".";
+  assert.deepEqual(packLines([big, big]), [big, big]); // 602 chars can't be one render
+  assert.deepEqual(packLines([]), []);
+  // exactly at the cap still packs
+  const a = "a".repeat(200) + ".";
+  const b = "b".repeat(PRICING.maxChars - a.length - 2) + ".";
+  assert.deepEqual(packLines([a, b]), [`${a} ${b}`]);
+});
+
+test("one turn's sentences render as a single clip", () => {
+  const client = makeClient();
+  const { mirror } = makeMirror({ cfg: { ...CFG }, client });
+  mirror.addSpeech("No. I don't do drugs.");
+  assert.equal(client.calls.length, 1);
+  assert.equal(client.calls[0].opts.text, "No. I don't do drugs.");
+});
+
 test("sentences dispatch immediately and play back in spoken order", async () => {
   const client = makeClient();
   const { mirror, events } = makeMirror({ cfg: { ...CFG }, client });
 
-  mirror.addSpeech("First sentence. Second sentence.");
+  mirror.addSpeech("First sentence.");
+  mirror.addSpeech("Second sentence.");
   assert.equal(client.calls.length, 2); // both rendering at once, no waiting
 
   // The second render lands first — it must wait for the first to play.
@@ -122,13 +142,17 @@ test("a trailing fragment waits for more speech instead of rendering", () => {
 test("renders cap in flight and failed renders never block the queue", async () => {
   const client = makeClient();
   const { mirror, events } = makeMirror({ cfg: { ...CFG }, client });
-  mirror.addSpeech("One. Two. Three. Four. Five.");
+  for (const t of ["One.", "Two.", "Three.", "Four.", "Five."]) mirror.addSpeech(t);
   assert.equal(client.calls.length, MAX_IN_FLIGHT);
+  // speech past the in-flight cap coalesced into one trailing pending job
+  assert.equal(mirror.jobs.length, MAX_IN_FLIGHT + 1);
+  assert.equal(mirror.jobs[MAX_IN_FLIGHT].line, "Four. Five.");
 
   client.calls[0].reject(new MaskyError("render failed"));
   await tick();
-  // the failure freed a slot for the fourth sentence
+  // the failure freed a slot for the coalesced tail
   assert.equal(client.calls.length, MAX_IN_FLIGHT + 1);
+  assert.equal(client.calls[MAX_IN_FLIGHT].opts.text, "Four. Five.");
 
   client.calls[1].resolve("url-two");
   await tick();
@@ -137,17 +161,19 @@ test("renders cap in flight and failed renders never block the queue", async () 
   assert.equal(events.plays[0].url, "url-two");
 });
 
-test("backpressure sheds the oldest unpaid sentence, never a started render", () => {
+test("backpressure sheds the oldest unpaid line, never a started render", () => {
   const client = makeClient();
   const { mirror } = makeMirror({ cfg: { ...CFG }, client });
-  for (let i = 0; i < MAX_JOBS; i++) mirror.addSpeech(`Sentence number ${i}.`);
+  // near-cap lines can't coalesce, so each is its own job
+  const big = (i) => `Line ${i} ${"x".repeat(480)}.`;
+  for (let i = 0; i < MAX_JOBS; i++) mirror.addSpeech(big(i));
   assert.equal(mirror.jobs.length, MAX_JOBS);
   const oldestPending = mirror.jobs.find((j) => j.status === "pending").line;
 
-  mirror.addSpeech("The newest line.");
+  mirror.addSpeech(big(99));
   assert.equal(mirror.jobs.length, MAX_JOBS);
   assert.ok(!mirror.jobs.some((j) => j.line === oldestPending));
-  assert.equal(mirror.jobs[mirror.jobs.length - 1].line, "The newest line.");
+  assert.equal(mirror.jobs[mirror.jobs.length - 1].line, big(99));
   // every started render survived
   assert.equal(mirror.jobs.filter((j) => j.status === "rendering").length, MAX_IN_FLIGHT);
 });
@@ -168,7 +194,8 @@ test("inactive config ignores speech entirely", () => {
 test("stop discards the queue and orphans in-flight renders", async () => {
   const client = makeClient();
   const { mirror, events } = makeMirror({ cfg: { ...CFG }, client });
-  mirror.addSpeech("One. Two.");
+  mirror.addSpeech("One.");
+  mirror.addSpeech("Two.");
   assert.equal(client.calls.length, 2);
   mirror.stop();
   assert.equal(mirror.jobs.length, 0);

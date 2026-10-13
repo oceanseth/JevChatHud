@@ -6,11 +6,17 @@
 // waiting for each clip to finish — and finished clips play back in spoken
 // order in the always-on avatar window.
 //
+// Batching: sentences that arrive in the same transcription window (one mic
+// chunk — i.e. the same breath) render as ONE clip, packed up to the server's
+// character cap. "No. I don't do drugs." is one reading, not two. Speech that
+// lands while renders are already in flight coalesces into the trailing
+// pending job instead of fanning out more requests.
+//
 // Money rules: a render is charged when requested, so a job that has started
 // rendering is never dropped. Backpressure only ever sheds *pending* sentences
 // (oldest first — when we're hopelessly behind, recent speech matters more
 // than a backlog of old lines).
-const { MaskyClient, MaskyError } = require("./masky");
+const { MaskyClient, MaskyError, PRICING } = require("./masky");
 
 const MAX_IN_FLIGHT = 3; // concurrent renders; more buys spend spikes + 429s
 const MAX_JOBS = 8; // pending+rendering+ready cap before pending lines shed
@@ -34,6 +40,23 @@ function splitSentences(buffer) {
     rest = rest.slice(m[0].length);
   }
   return { sentences, rest: rest.replace(/^\s+/, "") };
+}
+
+/**
+ * Pack one turn's sentences into as few renders as fit the server cap —
+ * sentences spoken in the same breath belong in the same clip.
+ */
+function packLines(sentences) {
+  const groups = [];
+  for (const s of sentences) {
+    const last = groups[groups.length - 1];
+    if (last != null && last.length + 1 + s.length <= PRICING.maxChars) {
+      groups[groups.length - 1] = `${last} ${s}`;
+    } else {
+      groups.push(s);
+    }
+  }
+  return groups;
 }
 
 class VoiceMirror {
@@ -79,7 +102,7 @@ class VoiceMirror {
     this.buffer = this.buffer ? `${this.buffer} ${clean}` : clean;
     const { sentences, rest } = splitSentences(this.buffer);
     this.buffer = rest;
-    for (const line of sentences) this.enqueue(line);
+    for (const line of packLines(sentences)) this.enqueue(line);
     // Whatever trails the last sentence end speaks on its own after a lull —
     // people don't always land on punctuation, and whisper doesn't either.
     clearTimeout(this.flushTimer);
@@ -100,6 +123,14 @@ class VoiceMirror {
 
   enqueue(line) {
     if (line.length < MIN_CHARS) return;
+    // Renders already in flight? New speech joins the trailing unsent job
+    // (one longer clip) rather than fanning out another render per chunk.
+    const tail = this.jobs[this.jobs.length - 1];
+    if (tail && tail.status === "pending" && tail.line.length + 1 + line.length <= PRICING.maxChars) {
+      tail.line = `${tail.line} ${line}`;
+      this.emitState();
+      return;
+    }
     // Over the cap: shed the oldest line that hasn't started rendering (not
     // yet paid for). All jobs committed? Then the new line is the one to drop.
     if (this.jobs.length >= MAX_JOBS) {
@@ -212,4 +243,4 @@ class VoiceMirror {
   }
 }
 
-module.exports = { VoiceMirror, splitSentences, MAX_IN_FLIGHT, MAX_JOBS, FRAGMENT_FLUSH_MS };
+module.exports = { VoiceMirror, splitSentences, packLines, MAX_IN_FLIGHT, MAX_JOBS, FRAGMENT_FLUSH_MS };
