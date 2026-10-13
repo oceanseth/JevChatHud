@@ -14,6 +14,7 @@ const { UserStats } = require("./src/user_stats");
 const { Transcriber } = require("./src/stt");
 const winstall = require("./src/whisper_install");
 const { Speaker } = require("./src/speaker");
+const { VoiceMirror } = require("./src/voice_mirror");
 const { MaskyClient } = require("./src/masky");
 const { maskyLogin } = require("./src/masky_login");
 const {
@@ -62,7 +63,10 @@ const deliveryWatch = new DeliveryWatch();
 let userStats = null;
 let transcriber = null;
 let speaker = null;
+let voiceMirror = null;
 let arranging = false;
+let avatarWin = null;
+let avatarArranging = false;
 // Messages awaiting judgment, so a judgment can be attributed to its user.
 const awaitingJudgment = new Map();
 const AWAITING_MAX = 2000;
@@ -180,10 +184,11 @@ function createWindow() {
       settings.update({ windowBounds: win.getNormalBounds() });
     } catch {}
   });
-  // The share overlay has no chrome of its own; it lives and dies with the HUD.
+  // The overlays have no chrome of their own; they live and die with the HUD.
   win.on("closed", () => {
     win = null;
     if (shareWin && !shareWin.isDestroyed()) shareWin.close();
+    if (avatarWin && !avatarWin.isDestroyed()) avatarWin.close();
   });
 }
 
@@ -229,6 +234,74 @@ function createShareWindow() {
 function saveShareBounds() {
   if (!shareWin || shareWin.isDestroyed()) return;
   settings.update({ speaker: { ...settings.get().speaker, shareBounds: shareWin.getBounds() } });
+}
+
+// The "Always on" avatar square (Manage identity): the stream-identity avatar
+// sits on screen permanently and lip-syncs the streamer's own mic, sentence by
+// sentence. Click-through except while being placed (arrange mode).
+function createAvatarWindow() {
+  if (avatarWin && !avatarWin.isDestroyed()) return avatarWin;
+  const saved = settings.get().speaker.avatarBounds;
+  avatarWin = new BrowserWindow({
+    width: saved?.width || 300,
+    height: saved?.height || 300,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
+    transparent: true,
+    frame: false,
+    hasShadow: false,
+    resizable: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: "Always on",
+    webPreferences: {
+      preload: path.join(__dirname, "preload-avatar.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  avatarWin.setAlwaysOnTop(true, "screen-saver");
+  avatarWin.setIgnoreMouseEvents(true);
+  avatarWin.loadFile(path.join(__dirname, "renderer", "avatar.html"));
+  avatarWin.on("moved", saveAvatarBounds);
+  avatarWin.on("resized", saveAvatarBounds);
+  avatarWin.on("closed", () => {
+    avatarWin = null;
+    avatarArranging = false;
+  });
+  return avatarWin;
+}
+
+function saveAvatarBounds() {
+  if (!avatarWin || avatarWin.isDestroyed()) return;
+  settings.update({ speaker: { ...settings.get().speaker, avatarBounds: avatarWin.getBounds() } });
+}
+
+/**
+ * Open or close the always-on square to match settings. `arrange` opens it
+ * in placement mode (the dashed square + ✕) — used when the slider flips on.
+ */
+function syncAlwaysOn({ arrange = false } = {}) {
+  const cfg = settings.get().speaker;
+  const on = cfg.alwaysOn && cfg.maskyToken && cfg.alwaysOnAvatar?.avatarId;
+  if (!on) {
+    voiceMirror?.stop();
+    avatarArranging = false;
+    if (avatarWin && !avatarWin.isDestroyed()) avatarWin.close();
+    return;
+  }
+  const w = createAvatarWindow();
+  if (arrange) avatarArranging = true;
+  w.setIgnoreMouseEvents(!avatarArranging);
+  if (avatarArranging) w.focus();
+  const push = () => {
+    if (!avatarWin || avatarWin.isDestroyed()) return;
+    const sp = settings.get().speaker;
+    w.webContents.send("avatar:chroma", sp.chroma);
+    w.webContents.send("avatar:still", sp.alwaysOnAvatar?.imageUrl || "");
+    w.webContents.send("avatar:arrange", avatarArranging);
+  };
+  if (w.webContents.isLoading()) w.webContents.once("did-finish-load", push);
+  else push();
 }
 
 // While a reading is on screen the card is a drag region, so the streamer can
@@ -373,6 +446,22 @@ app.whenReady().then(() => {
     getLanguage: profileLanguage,
   });
 
+  // "Always on": mic sentences render as the identity avatar speaking them,
+  // playing in spoken order in the avatar square.
+  voiceMirror = new VoiceMirror({
+    getConfig: () => settings.get().speaker,
+    onPlay: (payload) => {
+      const w = createAvatarWindow();
+      if (w.webContents.isLoading()) {
+        w.webContents.once("did-finish-load", () => w.webContents.send("avatar:play", payload));
+      } else {
+        w.webContents.send("avatar:play", payload);
+      }
+    },
+    onState: (state) => send("always:state", state),
+    onSpent: () => speaker.refreshBalance(),
+  });
+
   sources = new SourceManager({
     onMessage: (msg) => {
       // A composer send echoing back on the anonymous reader proves the
@@ -454,6 +543,7 @@ app.whenReady().then(() => {
   ipcMain.handle("speaker:update", (_e, patch) => {
     settings.update({ speaker: { ...settings.get().speaker, ...patch } });
     syncSpeaker();
+    syncAlwaysOn(); // chroma / token changes reach the avatar square too
     return settings.get().speaker;
   });
   ipcMain.handle("speaker:login", async () => {
@@ -467,6 +557,7 @@ app.whenReady().then(() => {
       },
     });
     syncSpeaker();
+    syncAlwaysOn();
     speaker.refreshBalance();
     return { connected: true, accountName: avatar?.name || "" };
   });
@@ -486,6 +577,7 @@ app.whenReady().then(() => {
       },
     });
     syncSpeaker();
+    syncAlwaysOn();
     speaker.refreshBalance();
     return { connected: true, avatars };
   });
@@ -500,6 +592,7 @@ app.whenReady().then(() => {
     });
     speaker.balance = null; // a new login must not inherit the old account's balance
     syncSpeaker(); // no token -> stops the schedule and closes the share window
+    syncAlwaysOn(); // and the always-on square can't render either
     return settings.get().speaker;
   });
   ipcMain.handle("speaker:avatars", async () => {
@@ -710,6 +803,32 @@ app.whenReady().then(() => {
     return { streamIdentity: await maskyClient.setStreamIdentity(token, body || {}) };
   });
 
+  // Always-on slider / personality checkbox / avatar change, from the
+  // Manage-identity popup. The renderer resolves the avatar (it has the
+  // popup's own + community lists); main persists it and runs the square.
+  ipcMain.handle("always:set", (_e, patch = {}) => {
+    const cur = settings.get().speaker;
+    const next = { ...cur };
+    let arrange = false;
+    if ("usePersonality" in patch) next.alwaysOnPersonality = !!patch.usePersonality;
+    if (patch.avatar?.avatarId) {
+      next.alwaysOnAvatar = {
+        avatarId: String(patch.avatar.avatarId),
+        ownerUserId: String(patch.avatar.ownerUserId || ""),
+        name: String(patch.avatar.name || ""),
+        imageUrl: String(patch.avatar.imageUrl || ""),
+      };
+    }
+    if ("enabled" in patch) {
+      // Flipping on (re)opens placement mode — the dashed square + ✕.
+      arrange = !!patch.enabled;
+      next.alwaysOn = !!patch.enabled;
+    }
+    settings.update({ speaker: next });
+    syncAlwaysOn({ arrange });
+    return settings.get().speaker;
+  });
+
   ipcMain.handle("speaker:state", () => speaker.emitState());
   ipcMain.handle("speaker:arrange", (_e, on) => {
     arranging = !!on;
@@ -755,6 +874,27 @@ app.whenReady().then(() => {
   // Audio-only readings report completion from the HUD renderer instead.
   ipcMain.on("speaker:audio-done", () => speaker.notePlaybackDone());
 
+  // Always-on avatar square chrome (mirrors the share window's arrange IPC).
+  // The ✕ saves the placement and leaves the avatar behind, click-through.
+  ipcMain.on("avatar:arrange-done", () => {
+    avatarArranging = false;
+    if (avatarWin && !avatarWin.isDestroyed()) {
+      saveAvatarBounds();
+      avatarWin.setIgnoreMouseEvents(true);
+      avatarWin.webContents.send("avatar:arrange", false);
+    }
+  });
+  let avatarSizeSave = null;
+  ipcMain.on("avatar:set-size", (_e, size) => {
+    if (!avatarWin || avatarWin.isDestroyed()) return;
+    const width = Math.max(140, Math.round(Number(size?.width) || 0));
+    const height = Math.max(140, Math.round(Number(size?.height) || 0));
+    avatarWin.setSize(width, height);
+    clearTimeout(avatarSizeSave);
+    avatarSizeSave = setTimeout(saveAvatarBounds, 400);
+  });
+  ipcMain.on("avatar:done", () => voiceMirror.notePlaybackDone());
+
   // Mic / local STT. Payloads are Float32Array PCM chunks (16kHz mono) from
   // the renderer's capture; structured clone may hand them over as views.
   const toFloat32 = (p) =>
@@ -776,10 +916,23 @@ app.whenReady().then(() => {
   ipcMain.handle("stt:recent", () => transcriber.recentSpeech());
   ipcMain.handle("stt:chunk", async (_e, pcm) => {
     const res = await transcriber.transcribe(toFloat32(pcm));
-    if (res.text) transcriber.record(res.text);
+    if (res.text) {
+      transcriber.record(res.text);
+      // The always-on avatar mirrors the same mic feed the judge reads.
+      voiceMirror.addSpeech(res.text);
+    }
     return res;
   });
   ipcMain.handle("stt:test", (_e, pcm) => transcriber.transcribe(toFloat32(pcm)));
+  // E2E harnesses inject transcribed speech directly — the scratch profile has
+  // no whisper install, and tests must not depend on a speech model's output.
+  if (process.env.JEVCHATHUD_E2E_SPEECH) {
+    ipcMain.handle("e2e:speech", (_e, text) => {
+      const line = String(text || "");
+      transcriber.record(line);
+      voiceMirror.addSpeech(line);
+    });
+  }
 
   // Guided whisper setup (Settings → Microphone). After any install step the
   // transcriber re-resolves in place so the rolling transcript survives.
@@ -853,6 +1006,7 @@ app.whenReady().then(() => {
   if (last) activateProfile(last);
   else emotesRefresh();
   syncSpeaker();
+  syncAlwaysOn(); // a persisted "always on" brings the avatar square back
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

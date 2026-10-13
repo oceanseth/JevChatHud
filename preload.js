@@ -65,4 +65,10 @@ contextBridge.exposeInMainWorld("hud", {
   identityLoad: () => ipcRenderer.invoke("identity:load"),
   identityImages: (avatarId, ownerUserId) => ipcRenderer.invoke("identity:images", { avatarId, ownerUserId }),
   identitySave: (body) => ipcRenderer.invoke("identity:save", body),
+  alwaysOnSet: (patch) => ipcRenderer.invoke("always:set", patch),
+  onAlwaysState: on("always:state"),
+  // Guarded test hook; the handler only exists when the env var is set.
+  ...(process.env.JEVCHATHUD_E2E_SPEECH
+    ? { e2eSpeech: (text) => ipcRenderer.invoke("e2e:speech", text) }
+    : {}),
 });

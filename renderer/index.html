@@ -120,6 +120,18 @@
         <div class="id-actions">
           <button type="button" id="id-clear" class="linklike hidden">clear selected</button>
         </div>
+        <div id="id-always" class="hidden">
+          <label class="switch" title="Keep your avatar on screen in its own square, speaking what your mic hears — each sentence renders with your Masky credits as it's said.">
+            <input type="checkbox" id="always-on-toggle" />
+            <span class="switch-track"></span>
+            <span class="switch-text">Always on</span>
+          </label>
+          <label class="check-label" id="always-personality-row" title="Your spoken lines are reinterpreted in the avatar's personality before being spoken. Avatars without a personality prompt speak verbatim.">
+            <input type="checkbox" id="always-personality" />
+            use personality
+          </label>
+          <div id="always-note" class="section-note block"></div>
+        </div>
         <div id="id-status" class="section-note block"></div>
       </div>
       <div class="id-panel id-community-panel">

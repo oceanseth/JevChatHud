@@ -35,6 +35,13 @@ const DEFAULTS = {
     chroma: false, // solid green idle background for OBS chroma key
     clickThrough: false, // share window never grabs the mouse; clicks fall through
     shareBounds: null, // last {x,y,width,height} of the share window
+    // "Always on" (Manage identity): the stream-identity avatar stays on
+    // screen in its own square and speaks what the mic hears, sentence by
+    // sentence, rendered via Masky avatar-speak with the user's credits.
+    alwaysOn: false,
+    alwaysOnPersonality: false, // speak reinterprets lines via the avatar's personality
+    alwaysOnAvatar: null, // resolved pick {avatarId, ownerUserId, name, imageUrl}
+    avatarBounds: null, // last {x,y,width,height} of the always-on avatar square
   },
   appearance: {
     fontFamily: "system", // key into the renderer's font map

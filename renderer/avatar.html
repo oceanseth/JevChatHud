@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' https:; media-src 'self' https:" />
+  <title>Always on</title>
+  <link rel="stylesheet" href="avatar.css" />
+</head>
+<body>
+  <!-- The always-on avatar square: the chosen identity still sits on screen
+       permanently; rendered clips of the streamer's own speech play over it.
+       .arranging draws the dashed outline + hint (same placement UX as the
+       share window); ✕ saves the spot and leaves the avatar behind. -->
+  <div id="arrange-hint">drag to move · pull the corner to resize · ✕ saves it</div>
+  <button id="arrange-close" title="Save this placement and close">✕</button>
+  <div id="resize-grip" title="Drag to resize"></div>
+  <div id="frame">
+    <img id="still" alt="" />
+    <video id="clip" class="hidden" playsinline></video>
+  </div>
+  <script src="avatar.js"></script>
+</body>
+</html>

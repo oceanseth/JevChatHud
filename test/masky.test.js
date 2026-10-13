@@ -392,3 +392,20 @@ test("speak forwards the profile language to the endpoint", async () => {
   await client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "hi", output: "video" });
   assert.equal("language" in body, false);
 });
+
+test("speak's textMode defaults literal and only 'personality' flips it", async () => {
+  let body;
+  const client = new MaskyClient({
+    fetchImpl: async (url, opts) => {
+      if (opts.method === "POST") body = JSON.parse(opts.body);
+      return jsonResponse({ generation: { status: "completed", videoUrl: "v", creditsCharged: 0.1 } });
+    },
+  });
+  await client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "hi" });
+  assert.equal(body.textMode, "literal");
+  await client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "hi", textMode: "personality" });
+  assert.equal(body.textMode, "personality");
+  // junk values never reach the API as-is
+  await client.speak({ token: "t", ownerUserId: "o", avatarId: "a", text: "hi", textMode: "yolo" });
+  assert.equal(body.textMode, "literal");
+});

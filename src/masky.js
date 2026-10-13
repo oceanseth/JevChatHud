@@ -5,7 +5,8 @@
 // creator earns their share. Auth is the user's own token: an mky_ API
 // key pasted in settings, or one issued by the Login-with-Masky OAuth
 // flow (scope `generate`).
-const BASE = "https://masky.ai/api";
+// Test harnesses point this at a local mock (same pattern as TYPESAFE_BASE_URL).
+const BASE = process.env.MASKY_BASE_URL || "https://masky.ai/api";
 
 // Public stream-identity mirror (masky.ai utils/devAvatars.js writes it,
 // masky_auth rules make it world-readable): streamIdentities/{twitchLogin}
@@ -188,14 +189,17 @@ class MaskyClient {
     }
   }
 
-  async speakOnce({ token, ownerUserId, avatarId, text, quality, output, avatarImageUrl, language }) {
+  async speakOnce({ token, ownerUserId, avatarId, text, quality, output, avatarImageUrl, language, textMode }) {
     const line = speakableLine(text);
     const want = output === "audio" ? "audioUrl" : "videoUrl";
     const created = await this.request("POST", `/avatars/${encodeURIComponent(avatarId)}/speak`, {
       token,
       body: {
         text: line,
-        textMode: "literal",
+        // "personality" has the avatar reinterpret the line through its
+        // personality prompt (the server falls back to literal when the
+        // avatar has none); everything else speaks the text verbatim.
+        textMode: textMode === "personality" ? "personality" : "literal",
         output: output === "audio" ? "audio" : "video",
         avatarOwnerUserId: ownerUserId,
         ...(quality ? { quality } : {}),

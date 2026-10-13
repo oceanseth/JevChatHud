@@ -906,6 +906,8 @@ async function setMicListening(on, { persist = true, guide = true } = {}) {
   micBtn.classList.toggle("active", micListening);
   settings.mic = { ...(settings.mic || {}), enabled: micListening };
   if (persist) settings = await hud.updateSettings({ mic: settings.mic });
+  // The always-on avatar mirrors the mic; its note tracks this state.
+  renderAlwaysOn();
 }
 
 micBtn.addEventListener("click", () => setMicListening(!micListening));
@@ -1964,6 +1966,10 @@ const idGame = document.getElementById("id-game");
 const idImages = document.getElementById("id-images");
 const idClear = document.getElementById("id-clear");
 const idStatus = document.getElementById("id-status");
+const alwaysBlock = document.getElementById("id-always");
+const alwaysToggle = document.getElementById("always-on-toggle");
+const alwaysPersonality = document.getElementById("always-personality");
+const alwaysNote = document.getElementById("always-note");
 const twitchLoginBtn = document.getElementById("twitch-login-btn");
 const twitchLogoutBtn = document.getElementById("twitch-logout-btn");
 const twitchConnectRow = document.getElementById("twitch-connect-row");
@@ -2416,6 +2422,7 @@ function focusedAvatar(data) {
 
 function renderIdentity() {
   const data = identityState;
+  renderAlwaysOn();
   const focus = data?.connected ? focusedAvatar(data) : null;
   idClear.classList.toggle("hidden", !focus);
   if (!data?.connected) {
@@ -2575,10 +2582,100 @@ async function saveIdentity(avatar, imageUrl) {
     paintIdentitySelection();
     const name = saved.streamIdentity?.displayName || avatar.name || "this avatar";
     idStatus.textContent = `Using ${name} on JevChatHud streams.`;
+    // The always-on square tracks the identity: a new pick swaps its face.
+    if (settings?.speaker?.alwaysOn) {
+      const pick = alwaysPickFromState();
+      if (pick) {
+        settings.speaker = await hud.alwaysOnSet({ avatar: pick });
+        renderAlwaysOn();
+      }
+    }
   } catch (err) {
     idStatus.textContent = err.message || String(err);
   }
 }
+
+// ---------- "Always on": the identity avatar mirrors the streamer's mic ----------
+
+/** The popup's focused avatar, resolved to what the speak API needs. */
+function alwaysPickFromState() {
+  const data = identityState;
+  if (!data?.connected) return null;
+  const focus = focusedAvatar(data);
+  if (!focus?.avatarId) return null;
+  const si = data.streamIdentity;
+  const still = (si?.avatarId === focus.avatarId && si.imageUrl) || focus.imageUrl || "";
+  return {
+    avatarId: focus.avatarId,
+    ownerUserId: focus.ownerUserId || "",
+    name: focus.name || "",
+    imageUrl: still,
+  };
+}
+
+let alwaysState = null; // last always:state from main (queue/render/error)
+
+function renderAlwaysOn() {
+  const connected = !!identityState?.connected;
+  alwaysBlock.classList.toggle("hidden", !connected);
+  if (!connected) return;
+  const sp = settings?.speaker || {};
+  alwaysToggle.checked = !!sp.alwaysOn;
+  alwaysPersonality.checked = !!sp.alwaysOnPersonality;
+  if (!sp.alwaysOn) {
+    alwaysNote.textContent = "";
+    return;
+  }
+  const name = sp.alwaysOnAvatar?.name || "Your avatar";
+  if (alwaysState?.error) {
+    alwaysNote.textContent = `${name}: ${alwaysState.error.message}`;
+  } else if (!micListening) {
+    alwaysNote.textContent = `${name} is on screen. Turn on the 🎙 mic in the header and it will speak what you say.`;
+  } else {
+    const busy = (alwaysState?.rendering || 0) + (alwaysState?.queued || 0) + (alwaysState?.playing ? 1 : 0);
+    alwaysNote.textContent = busy
+      ? `${name} is speaking what you say — ${busy} line${busy === 1 ? "" : "s"} in the pipeline.`
+      : `${name} is listening — it will speak what you say, sentence by sentence.`;
+  }
+}
+
+alwaysToggle.addEventListener("change", async () => {
+  try {
+    if (alwaysToggle.checked) {
+      const pick = alwaysPickFromState();
+      if (!pick) {
+        alwaysToggle.checked = false;
+        alwaysNote.textContent = "Pick an avatar above first.";
+        return;
+      }
+      settings.speaker = await hud.alwaysOnSet({
+        enabled: true,
+        avatar: pick,
+        usePersonality: alwaysPersonality.checked,
+      });
+    } else {
+      settings.speaker = await hud.alwaysOnSet({ enabled: false });
+    }
+  } catch (err) {
+    alwaysToggle.checked = !!settings?.speaker?.alwaysOn;
+    alwaysNote.textContent = err.message || String(err);
+    return;
+  }
+  renderAlwaysOn();
+});
+
+alwaysPersonality.addEventListener("change", async () => {
+  try {
+    settings.speaker = await hud.alwaysOnSet({ usePersonality: alwaysPersonality.checked });
+  } catch {
+    alwaysPersonality.checked = !!settings?.speaker?.alwaysOnPersonality;
+  }
+});
+
+hud.onAlwaysState((st) => {
+  alwaysState = st;
+  renderAlwaysOn();
+});
 
 identityBtn.addEventListener("click", () => {
   closeEmotePicker();
