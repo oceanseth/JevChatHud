@@ -5,8 +5,8 @@ const feed = document.getElementById("feed");
 const profileSelect = document.getElementById("profile-select");
 const relevancySlider = document.getElementById("relevancy");
 const relevancyValue = document.getElementById("relevancy-value");
-const factualSlider = document.getElementById("factual");
-const factualValue = document.getElementById("factual-value");
+const safetySlider = document.getElementById("safety");
+const safetyValue = document.getElementById("safety-value");
 const jevToggle = document.getElementById("jev-toggle");
 const jevFace = document.getElementById("jev-face");
 const jevVideo = document.getElementById("jev-video");
@@ -47,7 +47,7 @@ function feedView() {
     filtering: jevFiltering,
     kinds: [...selectedKinds],
     relevancyMin: Number(relevancySlider.value),
-    factualMin: Number(factualSlider.value),
+    safetyMin: Number(safetySlider.value),
   };
 }
 
@@ -189,35 +189,52 @@ function addMessage(msg) {
 }
 
 // With only the relevancy slider in play the chip is a bare relevancy score.
-// Once the factual slider is active the chip shows the BINDING dimension —
+// Once the safety slider is active the chip shows the BINDING dimension —
 // the score with the least headroom above its slider, i.e. the number that
-// explains why this row is in or out — letter-prefixed (r57 / f92) so the two
+// explains why this row is in or out — letter-prefixed (r57 / s92) so the two
 // dimensions can't be confused. The tooltip always carries both.
 function renderScoreChip(row) {
   const j = row._judgment;
   if (!j) return;
-  const factualMin = Number(factualSlider.value);
+  const safetyMin = Number(safetySlider.value);
   let text = String(j.relevancy);
   let cls = relClass(j.relevancy);
-  if (factualMin > 0) {
+  if (safetyMin > 0) {
     const relMargin = j.relevancy - Number(relevancySlider.value);
-    // A legacy judgment with no factuality fails any factual threshold.
-    const factMargin = (j.factuality == null ? -101 : j.factuality) - factualMin;
-    if (factMargin < relMargin) {
-      text = j.factuality == null ? "f?" : `f${j.factuality}`;
-      cls = j.factuality == null ? "pending" : relClass(j.factuality);
+    // A legacy judgment with no safety score fails any safety threshold.
+    const safetyMargin = (j.safety == null ? -101 : j.safety) - safetyMin;
+    if (safetyMargin < relMargin) {
+      text = j.safety == null ? "s?" : `s${j.safety}`;
+      cls = j.safety == null ? "pending" : relClass(j.safety);
     } else {
       text = `r${j.relevancy}`;
     }
   }
   row._relChip.textContent = text;
   row._relChip.className = `chip rel ${cls}`;
-  const rel = `relevancy ${j.relevancy}/100 (confidence ${j.relevanceConfidence.toFixed(2)})`;
-  const fact =
-    j.factuality == null
-      ? "no factuality score — judged by an older build"
-      : `factual ${j.factuality}/100 (confidence ${j.factualConfidence.toFixed(2)})`;
-  row._relChip.title = `${rel} · ${fact}`;
+  row._relChip.title = `relevancy ${j.relevancy}/100 (confidence ${j.relevanceConfidence.toFixed(2)}) · ${safetyTip(j)}`;
+}
+
+// The safety half of a chip tooltip: the score plus what it was flagged for,
+// phrased as a lens ("flagged for"), never a verdict.
+function safetyTip(j) {
+  if (j.safety == null) return "no safety score — judged by an older build";
+  let tip = `safety ${j.safety}/100 (confidence ${j.safetyConfidence.toFixed(2)})`;
+  if (j.technique && j.technique !== "none" && j.techniqueConfidence > KIND_CONFIDENCE_MIN) {
+    tip += ` — flagged for ${j.technique.replace(/_/g, " ")} (${j.techniqueConfidence.toFixed(2)})`;
+  }
+  return tip;
+}
+
+// A confident non-none technique verdict earns its own chip — the named
+// fallacy / manipulation family, presented as a flag ("why"), not a verdict.
+function techniqueChip(j) {
+  if (!j.technique || j.technique === "none" || !(j.techniqueConfidence > KIND_CONFIDENCE_MIN)) return null;
+  const chip = document.createElement("span");
+  chip.className = "chip technique";
+  chip.textContent = j.technique.replace(/_/g, " ");
+  chip.title = `flagged for ${j.technique.replace(/_/g, " ")} (confidence ${j.techniqueConfidence.toFixed(2)}) — a lens, not a verdict`;
+  return chip;
 }
 
 function markJudged({ id, judgment }) {
@@ -239,6 +256,8 @@ function markJudged({ id, judgment }) {
     kindChip.textContent = judgment.kind.replace("_", " ");
     kindChip.title = `confidence ${judgment.kindConfidence.toFixed(2)}`;
     row._badges.append(kindChip);
+    const techChip = techniqueChip(judgment);
+    if (techChip) row._badges.append(techChip);
     renderTagCounts();
   }
   applyFilter(row);
@@ -522,13 +541,13 @@ function syncFilterControls() {
   // Communicate precedence: tags replace the sliders. (When Jev's eyes are
   // closed the whole filter stack is hidden, so no state to communicate.)
   const tip = tagsActive ? "tag filter active — clear tags to use the sliders" : "";
-  for (const id of ["relevancy-label", "factual-label"]) {
+  for (const id of ["relevancy-label", "safety-label"]) {
     document.getElementById(id).classList.toggle("inactive", tagsActive);
   }
   relevancySlider.disabled = tagsActive;
-  factualSlider.disabled = tagsActive;
+  safetySlider.disabled = tagsActive;
   relevancySlider.title = tip;
-  factualSlider.title = tip;
+  safetySlider.title = tip;
 }
 
 function setKinds(kinds) {
@@ -688,19 +707,19 @@ profileSelect.addEventListener("change", async () => {
 // binding dimension can flip as the margins change.
 relevancySlider.addEventListener("input", () => {
   relevancyValue.textContent = relevancySlider.value;
-  if (Number(factualSlider.value) > 0) for (const row of rows.values()) renderScoreChip(row);
+  if (Number(safetySlider.value) > 0) for (const row of rows.values()) renderScoreChip(row);
   refilterAll();
 });
 relevancySlider.addEventListener("change", () => {
   hud.updateSettings({ relevancyThreshold: Number(relevancySlider.value) });
 });
-factualSlider.addEventListener("input", () => {
-  factualValue.textContent = factualSlider.value;
+safetySlider.addEventListener("input", () => {
+  safetyValue.textContent = safetySlider.value;
   for (const row of rows.values()) renderScoreChip(row);
   refilterAll();
 });
-factualSlider.addEventListener("change", () => {
-  hud.updateSettings({ factualThreshold: Number(factualSlider.value) });
+safetySlider.addEventListener("change", () => {
+  hud.updateSettings({ safetyThreshold: Number(safetySlider.value) });
 });
 
 // ---------- the Jev Judge toggle ----------
@@ -747,13 +766,13 @@ jevToggle.addEventListener("click", () => setJevFiltering(!jevFiltering));
 // ---------- slider peeks ----------
 // Clicking "relevancy" slides open a strip showing exactly what rides into
 // each judging batch: the active profile's stream context plus the rolling
-// last-60s mic transcript (live while the mic is on). Clicking "factual"
-// slides open a static explainer of the fact-vs-opinion score. They share the
+// last-60s mic transcript (live while the mic is on). Clicking "safety"
+// slides open a static explainer of the manipulation lens. They share the
 // strip zone between the sliders and the tag bar, so opening one closes the
 // other.
 
 const contextPeek = document.getElementById("context-peek");
-const factualPeek = document.getElementById("factual-peek");
+const safetyPeek = document.getElementById("safety-peek");
 const ctxStream = document.getElementById("ctx-stream");
 const ctxSpeech = document.getElementById("ctx-speech");
 let ctxTimer = null;
@@ -779,14 +798,14 @@ function setContextPeek(open) {
   clearInterval(ctxTimer);
   ctxTimer = null;
   if (open) {
-    factualPeek.classList.remove("open");
+    safetyPeek.classList.remove("open");
     refreshContextPeek();
     ctxTimer = setInterval(refreshContextPeek, 2000);
   }
 }
 
-function setFactualPeek(open) {
-  factualPeek.classList.toggle("open", open);
+function setSafetyPeek(open) {
+  safetyPeek.classList.toggle("open", open);
   if (open) setContextPeek(false);
 }
 
@@ -795,11 +814,11 @@ document.querySelector("#relevancy-label .metric-name").addEventListener("click"
   setContextPeek(!contextPeek.classList.contains("open"));
 });
 document.getElementById("context-peek-close").addEventListener("click", () => setContextPeek(false));
-document.querySelector("#factual-label .metric-name").addEventListener("click", (e) => {
+document.querySelector("#safety-label .metric-name").addEventListener("click", (e) => {
   e.preventDefault();
-  setFactualPeek(!factualPeek.classList.contains("open"));
+  setSafetyPeek(!safetyPeek.classList.contains("open"));
 });
-document.getElementById("factual-peek-close").addEventListener("click", () => setFactualPeek(false));
+document.getElementById("safety-peek-close").addEventListener("click", () => setSafetyPeek(false));
 
 // ---------- streamer mic → local STT context ----------
 // Capture runs here (getUserMedia); 16kHz mono Float32 chunks ship to the main
@@ -1156,6 +1175,13 @@ alwaysOnTopCheck.addEventListener("change", async () => {
   settings = await hud.updateSettings({ alwaysOnTop: alwaysOnTopCheck.checked });
 });
 
+// "Judgement replies in chat": main sends the actual Twitch replies when a
+// judged message falls below the safety slider; this is just the policy bit.
+const judgementRepliesCheck = document.getElementById("judgement-replies");
+judgementRepliesCheck.addEventListener("change", async () => {
+  settings = await hud.updateSettings({ judgementReplies: judgementRepliesCheck.checked });
+});
+
 // ---------- settings panel ----------
 
 const overlay = document.getElementById("overlay");
@@ -1375,6 +1401,7 @@ function openSettingsPanel({ focusSources = false, focusMic = false, focusTwitch
   sizeValue.textContent = sizeSlider.value;
   timestampsCheck.checked = !!a.timestamps;
   alwaysOnTopCheck.checked = !!settings.alwaysOnTop;
+  judgementRepliesCheck.checked = !!settings.judgementReplies;
   populateMicDevices();
   renderSttSetup();
   micTestResult.textContent = "";
@@ -2087,7 +2114,7 @@ chatInput.addEventListener("input", () => {
 
 // ---------- pre-send judgment preview ----------
 // After a typing pause the draft goes through the Judge exactly as the sent
-// message would; the verdict (kind tag + r/f scores) shows under the composer
+// message would; the verdict (kind tag + r/s scores) shows under the composer
 // and the compose box greys when the draft would fail the current filters.
 
 const chatPreview = document.getElementById("chat-preview");
@@ -2136,8 +2163,8 @@ function schedulePreview() {
 function previewHiddenReason(j, view) {
   if (view.kinds.length) return "hidden by your tag filter";
   if (j.relevancy < view.relevancyMin) return `relevancy below your ${view.relevancyMin} bar — won't show in the feed`;
-  if (view.factualMin > 0 && !(j.factuality != null && j.factuality >= view.factualMin)) {
-    return `factual score below your ${view.factualMin} bar — won't show in the feed`;
+  if (view.safetyMin > 0 && !(j.safety != null && j.safety >= view.safetyMin)) {
+    return `safety score below your ${view.safetyMin} bar — won't show in the feed`;
   }
   return "won't show in the feed";
 }
@@ -2173,14 +2200,16 @@ function renderComposePreview() {
   relChip.className = `chip rel ${relClass(j.relevancy)}`;
   relChip.textContent = `r${j.relevancy}`;
   relChip.title = `relevancy ${j.relevancy}/100 (confidence ${j.relevanceConfidence.toFixed(2)})`;
-  const factChip = document.createElement("span");
-  factChip.className = `chip rel ${relClass(j.factuality)}`;
-  factChip.textContent = `f${j.factuality}`;
-  factChip.title = `factual ${j.factuality}/100 (confidence ${j.factualConfidence.toFixed(2)})`;
+  const safetyChip = document.createElement("span");
+  safetyChip.className = `chip rel ${relClass(j.safety)}`;
+  safetyChip.textContent = `s${j.safety}`;
+  safetyChip.title = safetyTip(j);
   const note = document.createElement("span");
   note.className = "preview-note";
   note.textContent = visible ? "would show in your feed" : previewHiddenReason(j, view);
-  chatPreview.replaceChildren(kindChip, relChip, factChip, note);
+  const techChip = techniqueChip(j);
+  if (techChip) chatPreview.replaceChildren(kindChip, relChip, safetyChip, techChip, note);
+  else chatPreview.replaceChildren(kindChip, relChip, safetyChip, note);
   chatPreview.classList.remove("hidden");
 }
 
@@ -2816,8 +2845,8 @@ hud.onEmotes(applyEmoteCatalog);
   settings = await hud.getSettings();
   relevancySlider.value = settings.relevancyThreshold;
   relevancyValue.textContent = settings.relevancyThreshold;
-  factualSlider.value = settings.factualThreshold || 0;
-  factualValue.textContent = factualSlider.value;
+  safetySlider.value = settings.safetyThreshold || 0;
+  safetyValue.textContent = safetySlider.value;
   setJevFiltering(settings.jevFiltering !== false, { animate: false, persist: false });
   buildTagBar();
   for (const k of settings.kindFilter || []) if (KINDS.includes(k)) selectedKinds.add(k);

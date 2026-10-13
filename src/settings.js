@@ -9,7 +9,10 @@ const DEFAULTS = {
   model: "jev-latest",
   jevFiltering: true, // the Jev Judge toggle; false = raw firehose, filters hidden
   relevancyThreshold: 55, // 0-100; messages scoring below are hidden in curated view
-  factualThreshold: 0, // 0-100 over Jev's factuality score; 0 = no constraint
+  safetyThreshold: 0, // 0-100 over Jev's safety score (manipulation lens); 0 = no constraint
+  // When the safety slider blocks a message, reply to it in chat (as the
+  // logged-in Twitch account) naming the detected fallacy / manipulation.
+  judgementReplies: false,
   kindFilter: [], // selected message kinds; non-empty replaces the slider filters
   mic: {
     enabled: false, // listen to the streamer's mic for judging context
@@ -75,17 +78,16 @@ class Settings {
       this.data.mic = { ...DEFAULTS.mic, ...(raw.mic || {}) };
       this.data.speaker = { ...DEFAULTS.speaker, ...(raw.speaker || {}) };
       this.data.twitch = { ...DEFAULTS.twitch, ...(raw.twitch || {}) };
-      // v0.5 → v0.6: "see all" became the Jev Judge toggle (inverted), and the
-      // "facts only" checkbox became the factual slider. factsOnly meant "the
-      // one slider thresholds factuality", which is exactly factual=old
-      // threshold, relevancy=0 in the dual-slider model.
+      // v0.5 → v0.6: "see all" became the Jev Judge toggle (inverted).
       if (!("jevFiltering" in raw) && "seeAll" in raw) this.data.jevFiltering = !raw.seeAll;
-      if (!("factualThreshold" in raw) && raw.factsOnly) {
-        this.data.factualThreshold = this.data.relevancyThreshold;
-        this.data.relevancyThreshold = 0;
-      }
+      // v0.6 → v0.7: the factual slider became the safety slider. The two
+      // measure different things (asserts-something-checkable vs
+      // manipulation), so an old factual position does NOT carry over — the
+      // safety slider starts at 0 (no constraint), which only ever shows
+      // more, never silently hides messages under a repurposed threshold.
       delete this.data.seeAll;
       delete this.data.factsOnly;
+      delete this.data.factualThreshold;
     } catch {
       // first run or unreadable file: start from defaults
     }

@@ -29,6 +29,7 @@ const {
   DeliveryWatch,
   TwitchAuthError,
 } = require("./src/twitch_auth");
+const { judgementReplyText, ReplyThrottle } = require("./src/judge_reply");
 const { emptyCatalog, loadEmoteCatalog } = require("./src/emote_catalog");
 const { Translator } = require("./src/translator");
 const { nameMapFromGroups } = require("./renderer/emotes");
@@ -70,6 +71,49 @@ let avatarArranging = false;
 // Messages awaiting judgment, so a judgment can be attributed to its user.
 const awaitingJudgment = new Map();
 const AWAITING_MAX = 2000;
+
+// "Judgement replies in chat": a message the safety slider blocks gets a
+// threaded chat reply naming the detected fallacy / manipulation, sent as the
+// logged-in Twitch account. Throttled so a raid of unsafe messages can't turn
+// Jev into the loudest voice in the channel.
+const replyThrottle = new ReplyThrottle();
+const broadcasterIdCache = new Map(); // channel login -> broadcaster id
+
+function maybeJudgementReply(msg, judgment) {
+  const cfg = settings.get();
+  const bar = cfg.safetyThreshold || 0;
+  // Replies follow the filter: eyes closed or slider at 0 = nothing is "unsafe".
+  if (!cfg.judgementReplies || bar <= 0 || cfg.jevFiltering === false) return;
+  if (!judgment || judgment.safety == null || judgment.safety >= bar) return;
+  if (msg.source?.type !== "twitch") return; // replies ride the Twitch send path
+  const tw = cfg.twitch || {};
+  if (!tw.accessToken || !tw.userId) return;
+  const channel = activeTwitchChannel(cfg);
+  if (!channel || msg.source.label !== `#${channel}`) return;
+  // Never auto-reply to the account doing the replying.
+  const sender = String(msg.user?.name || "").toLowerCase();
+  if (!sender || sender === (tw.login || "").toLowerCase() || sender === (tw.displayName || "").toLowerCase()) return;
+  if (!replyThrottle.allow(sender)) return;
+  (async () => {
+    let broadcasterId = broadcasterIdCache.get(channel);
+    if (!broadcasterId) {
+      broadcasterId = await broadcasterIdFor(tw.accessToken, channel);
+      if (!broadcasterId) return;
+      broadcasterIdCache.set(channel, broadcasterId);
+    }
+    await sendChatMessage({
+      token: tw.accessToken,
+      broadcasterId,
+      senderId: tw.userId,
+      message: judgementReplyText(msg.user.name, judgment),
+      replyParentMessageId: msg.id,
+    });
+  })().catch((err) => {
+    // A dead token surfaces through the composer's own reauth flow the next
+    // time the streamer chats; an auto-reply failing is never worth a popup.
+    console.error("judgement reply failed:", err.message || err);
+  });
+}
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -411,6 +455,7 @@ app.whenReady().then(() => {
         awaitingJudgment.delete(id);
         userStats.recordJudgment(msg, judgment);
         speaker.noteJudged(msg, judgment);
+        maybeJudgementReply(msg, judgment);
       }
       send("chat:judged", { id, judgment });
     },

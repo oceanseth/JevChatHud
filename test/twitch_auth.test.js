@@ -133,6 +133,24 @@ test("sendChatMessage posts Helix chat/messages and surfaces a drop reason", asy
   });
 });
 
+test("sendChatMessage threads a reply via reply_parent_message_id", async () => {
+  let body;
+  const fetchImpl = async (_url, opts) => {
+    body = JSON.parse(opts.body);
+    return jsonResponse({ data: [{ message_id: "m2", is_sent: true }] });
+  };
+  const res = await sendChatMessage({
+    token: "tok",
+    broadcasterId: "b",
+    senderId: "s",
+    message: "why: loaded language",
+    replyParentMessageId: "parent-uuid",
+    fetchImpl,
+  });
+  assert.equal(body.reply_parent_message_id, "parent-uuid");
+  assert.equal(res.messageId, "m2");
+});
+
 test("broadcasterIdFor turns a Helix 401 into TwitchAuthError", async () => {
   const fetchImpl = async () => jsonResponse({ message: "Invalid OAuth token" }, 401);
   await assert.rejects(

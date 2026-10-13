@@ -48,16 +48,16 @@
       <input type="range" id="relevancy" min="0" max="100" value="55" />
     </label>
     <span id="controls-gap"></span>
-    <label class="metric-label" id="factual-label" title="Hide messages below this factuality score (does the message assert something verifiable, fact vs opinion?). 0 = no constraint.">
-      <span class="metric-name">factual</span> <span id="factual-value" class="metric-value">0</span>
-      <input type="range" id="factual" min="0" max="100" value="0" />
+    <label class="metric-label" id="safety-label" title="Hide messages below this safety score (manipulation lens: logical fallacies, coercion, persuasion techniques, narrative pushing). 0 = no constraint.">
+      <span class="metric-name">safety</span> <span id="safety-value" class="metric-value">0</span>
+      <input type="range" id="safety" min="0" max="100" value="0" />
     </label>
   </div>
 
   <!-- Slider peeks: strips that slide open between the sliders and the tag
        bar. Clicking "relevancy" shows exactly what rides into each judging
-       batch (stream context + last minute of mic speech); clicking "factual"
-       explains the fact-vs-opinion score. One at a time — opening either
+       batch (stream context + last minute of mic speech); clicking "safety"
+       explains the manipulation lens. One at a time — opening either
        collapses the other; the arrow collapses it. -->
   <div id="context-peek" class="peek">
     <div class="peek-inner">
@@ -69,19 +69,20 @@
       <div class="ctx-row"><span class="ctx-label">spoken · last 60s</span><span id="ctx-speech" class="ctx-text"></span></div>
     </div>
   </div>
-  <!-- Mirrors FACTUAL_LEVELS in src/judge.js — the four rungs below are that
-       rubric in viewer-facing words; keep them in sync. -->
-  <div id="factual-peek" class="peek">
+  <!-- Mirrors MANIPULATION_LEVELS in src/judge.js — the rungs below are that
+       rubric in viewer-facing words (safety = 100 − manipulation risk); keep
+       them in sync. -->
+  <div id="safety-peek" class="peek">
     <div class="peek-inner">
       <div class="peek-head">
-        <span>what the factual slider does:</span>
-        <button id="factual-peek-close" class="peek-close" title="Hide">▴</button>
+        <span>what the safety slider does:</span>
+        <button id="safety-peek-close" class="peek-close" title="Hide">▴</button>
       </div>
-      <div class="ctx-row"><span class="ctx-text">Jev scores each message 0–100 on whether it <em>asserts something checkable</em> — fact vs opinion, not whether it's true. Messages scoring below the slider are hidden; it combines with the relevancy slider, and 0 means no constraint.</span></div>
-      <div class="ctx-row"><span class="ctx-label">0</span><span class="ctx-text">pure opinion or reaction — hype, jokes, emote spam, questions</span></div>
-      <div class="ctx-row"><span class="ctx-label">33</span><span class="ctx-text">speculation stated as fact — predictions, rumors, guesses</span></div>
-      <div class="ctx-row"><span class="ctx-label">67</span><span class="ctx-text">the speaker's own experience — concrete, but only they could verify it</span></div>
-      <div class="ctx-row"><span class="ctx-label">100</span><span class="ctx-text">a checkable claim about the world, the game, or the stream</span></div>
+      <div class="ctx-row"><span class="ctx-text">Jev scores each message 0–100 on how it <em>tries to work on you</em> — logical fallacies, loaded language, coercion, narrative pushing — summed with how hard it's steering toward an outcome. Messages scoring below the slider are hidden; it combines with the relevancy slider, and 0 means no constraint. It's a lens, not a verdict: flagged messages show <em>why</em> in their chip tooltip.</span></div>
+      <div class="ctx-row"><span class="ctx-label">100</span><span class="ctx-text">straight talk — says what it means, no rhetorical pressure</span></div>
+      <div class="ctx-row"><span class="ctx-label">~67</span><span class="ctx-text">rhetorical slant — one-sided framing, transparent ordinary persuasion</span></div>
+      <div class="ctx-row"><span class="ctx-label">~33</span><span class="ctx-text">persuasion techniques — loaded language, smuggled assumptions, fallacies at work</span></div>
+      <div class="ctx-row"><span class="ctx-label">0</span><span class="ctx-text">coercive or manipulative — guilt, threats, gaslighting, engineered narratives</span></div>
     </div>
   </div>
 
@@ -171,7 +172,7 @@
       <button type="submit" id="chat-send">Chat</button>
     </form>
     <!-- Pre-send verdict: after a typing pause the draft is judged like real
-         chat, and its tag + r/f scores show here with the feed's chip styling.
+         chat, and its tag + r/s scores show here with the feed's chip styling.
          The compose box dims when the draft would fail the current filters. -->
     <div id="chat-preview" class="hidden"></div>
     <div id="chat-error" class="hidden"></div>
@@ -243,6 +244,9 @@
         <button type="button" id="twitch-logout-btn">logout</button>
       </div>
       <div id="twitch-pending" class="section-note block hidden"></div>
+      <label id="judgement-replies-label" class="check-label" title="When the safety slider blocks a message, Jev replies to it in chat (as this Twitch account) naming the detected fallacy, manipulation, or persuasion technique. Replies are threaded and rate-limited per chatter. Does nothing while the safety slider sits at 0.">
+        <input type="checkbox" id="judgement-replies" /> judgement replies in chat — tell chatters why a message was judged unsafe
+      </label>
 
       <h2 id="mic-heading">Microphone</h2>
       <div class="section-note block">When the mic is on, your recent speech is transcribed locally (never uploaded)

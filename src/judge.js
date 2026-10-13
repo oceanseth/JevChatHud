@@ -1,10 +1,11 @@
 // Jev judge: batches incoming chat messages and asks TypeSafe for structured
 // judgments. One request carries the whole batch (speculative fan-out): per
-// message a Score for attention-worthiness, a Score for factuality, and a
-// Choice for the message kind. Code owns the policy: the HUD's slider
-// thresholds the raw scores, and the "facts only" checkbox just swaps which
-// score it thresholds — toggling never re-runs inference.
-const { TypeSafeClient, score, choice } = require("@typesafe-ai/sdk");
+// message a Score for attention-worthiness, a safety battery (manipulation
+// Score + outcome Noul + technique Choice, summed into one safety score), and
+// a Choice for the message kind — all in a single forward pass. Code owns the
+// policy: the HUD's sliders threshold the raw scores; sliding never re-runs
+// inference.
+const { TypeSafeClient, score, choice, noul } = require("@typesafe-ai/sdk");
 
 const FLUSH_MS = 1200;
 const MAX_BATCH = 8;
@@ -20,17 +21,46 @@ const RELEVANCE_LEVELS = [
   "Needs the streamer now: a direct question the viewer is waiting on, a report that the stream itself is broken (no audio, frozen video, wrong scene), a raid or large donation, a safety issue, or other time-sensitive information.",
 ];
 
-// Ordered rubric for the facts-only lens, indexed from zero. Framing follows
-// the fact-vs-opinion literature (ClaimBuster's non-factual / unimportant
-// factual / check-worthy factual taxonomy, CheckThat!'s subjectivity task):
-// the dimension is whether the message ASSERTS something verifiable, not
-// whether the assertion is true. Expected score / 3 * 100 = factuality.
-const FACTUAL_LEVELS = [
-  "Pure opinion, emotion, or reaction: a preference, value judgment, joke, insult, emote spam, hype, or a question. The message asserts nothing that could be checked.",
-  "Speculation presented as a statement: a prediction, guess, rumor, or personal interpretation with no evidence anyone could verify.",
-  "A factual statement about the speaker's own experience: something concrete that happened, but only the speaker could verify it (what they did, saw, or ran into).",
-  "A verifiable factual claim about the world, the game, or the stream: others could check it against an external source or the stream itself.",
+// Ordered manipulation rubric, indexed from zero — the heart of the safety
+// lens. Framing follows the persuasion/manipulation literature: the SemEval-
+// 2023 Task 3 persuasion-technique taxonomy (23 techniques under 6 coarse
+// families), MAFALDA's unified fallacy taxonomy (NAACL 2024), and MentalManip
+// (ACL 2024) for coercive manipulation in dialogue. The research's key
+// empirical lesson: detectors are reliable at the coarse level and shaky at
+// fine technique names — so the score carries the policy and the technique
+// Choice below is presented as a hypothesis, never a verdict.
+const MANIPULATION_LEVELS = [
+  "Straight talk: a plain statement, question, or reaction with no rhetorical pressure beyond its content.",
+  "Rhetorical slant: opinionated framing, one-sided emphasis, or mild exaggeration — ordinary persuasion that is transparent about being persuasion.",
+  "Persuasion techniques at work: loaded or triggering language, a smuggled presupposition, strategic ambiguity, a bogus appeal to fear, authority, or the crowd, or a recognizable logical fallacy doing real argumentative work.",
+  "Coercive or manipulative: threats, pressure, guilt or shame leverage, gaslighting, bait engineered to provoke a pile-on, or a constructed narrative built to force an outcome or obscure the truth.",
 ];
+
+// Fallacy / persuasion-technique families, condensed from SemEval-2023's six
+// families plus MentalManip's coercion taxonomy. One Choice per message names
+// the DOMINANT family — coarse on purpose; fine-grained fallacy naming is
+// where detectors (humans included) stop agreeing.
+const TECHNIQUE_CRITERIA = {
+  none: "No technique: a plain statement, question, reaction, or transparent opinion arguing in good faith.",
+  loaded_language: "Manipulative wording: emotionally loaded or triggering words, exaggeration, fear or outrage bait chosen to provoke a reaction rather than inform.",
+  reputation_attack: "Attack on reputation: name-calling, smears, mockery, guilt by association, or attacking the person instead of the point.",
+  false_logic: "Faulty logic dressed as reasoning: false dilemma, strawman, causal oversimplification, or a bogus appeal to authority or popularity.",
+  distraction: "Distraction: dodging the actual point with whataboutism, a red herring, or an abrupt topic shift.",
+  presupposition: "Smuggled assumption: states something indirectly by presupposing it, e.g. a loaded question whose premise was never established.",
+  vagueness: "Strategic vagueness: weasel words, undefined quantifiers, or claims kept too slippery to ever pin down or verify.",
+  coercion: "Coercive pressure: guilt-tripping, shaming, threats, intimidation, gaslighting, or playing the victim to force compliance.",
+  call_to_action: "Outcome push: pressuring the streamer or audience to do something — follow, raid, donate, ban, boycott — rather than saying something.",
+};
+
+// The safety battery's parts sum into one 0-100 safety score (100 = straight
+// talk, 0 = coercive manipulation certain to be steering): the manipulation
+// rubric carries double weight, the outcome-seeking probability the rest.
+// The technique Choice names the flag but never moves the number.
+function safetyFromAnswers(manip, outcome) {
+  const manipRisk = manip.score / (MANIPULATION_LEVELS.length - 1);
+  const risk = (manipRisk * 2 + outcome.noul) / 3;
+  return 100 - Math.round(risk * 100);
+}
 
 const KIND_CRITERIA = {
   question: "A direct question addressed to the streamer.",
@@ -45,13 +75,19 @@ const KIND_CRITERIA = {
 // Raw answers for `messages[i]` → the judgment object the HUD consumes.
 function judgmentFromAnswers(answers, i) {
   const rel = answers[`m${i}_relevance`];
-  const factual = answers[`m${i}_factual`];
+  const manip = answers[`m${i}_manip`];
+  const outcome = answers[`m${i}_outcome`];
+  const technique = answers[`m${i}_technique`];
   const kind = answers[`m${i}_kind`];
   return {
     relevancy: Math.round((rel.score / (RELEVANCE_LEVELS.length - 1)) * 100),
     relevanceConfidence: rel.confidence,
-    factuality: Math.round((factual.score / (FACTUAL_LEVELS.length - 1)) * 100),
-    factualConfidence: factual.confidence,
+    safety: safetyFromAnswers(manip, outcome),
+    safetyConfidence: manip.confidence,
+    manipulation: Math.round((manip.score / (MANIPULATION_LEVELS.length - 1)) * 100),
+    outcome: outcome.noul,
+    technique: technique.choice,
+    techniqueConfidence: technique.confidence,
     kind: kind.choice,
     kindConfidence: kind.confidence,
   };
@@ -121,9 +157,16 @@ class Judge {
         `Considering ${contextRefs}, how much does chat message \`messages[${i}]\` deserve the streamer's personal attention right now?`,
         RELEVANCE_LEVELS
       );
-      questions[`m${i}_factual`] = score(
-        `To what degree does chat message \`messages[${i}]\` state a fact rather than express an opinion? Judge only whether it asserts something verifiable, not whether it is true.`,
-        FACTUAL_LEVELS
+      questions[`m${i}_manip`] = score(
+        `How manipulative is chat message \`messages[${i}]\` in how it tries to work on the streamer or audience? Judge the rhetorical mechanics, not whether you agree with it. Stream chat is dense with sarcasm, memes, and copypasta — ironic or meme text is not manipulation.`,
+        MANIPULATION_LEVELS
+      );
+      questions[`m${i}_outcome`] = noul(
+        `Is chat message \`messages[${i}]\` trying to get the streamer or audience to do, believe, or feel something specific beyond its literal content?`
+      );
+      questions[`m${i}_technique`] = choice(
+        `Which persuasion or manipulation technique family, if any, is dominant in chat message \`messages[${i}]\`?`,
+        TECHNIQUE_CRITERIA
       );
       questions[`m${i}_kind`] = choice(
         `What kind of message is \`messages[${i}]\`?`,
@@ -216,4 +259,4 @@ class Judge {
   }
 }
 
-module.exports = { Judge, RELEVANCE_LEVELS, FACTUAL_LEVELS, KIND_CRITERIA };
+module.exports = { Judge, RELEVANCE_LEVELS, MANIPULATION_LEVELS, TECHNIQUE_CRITERIA, KIND_CRITERIA, safetyFromAnswers };

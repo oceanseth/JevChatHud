@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { Judge, RELEVANCE_LEVELS, FACTUAL_LEVELS, KIND_CRITERIA } = require("../src/judge");
+const { Judge, RELEVANCE_LEVELS, MANIPULATION_LEVELS, TECHNIQUE_CRITERIA, KIND_CRITERIA, safetyFromAnswers } = require("../src/judge");
 const { Settings } = require("../src/settings");
 const fs = require("fs");
 const os = require("os");
@@ -20,7 +20,7 @@ function msg(id, text, user = "viewer") {
   return { id, text, user: { name: user }, source: { type: "twitch", label: "#chan" }, ts: Date.now() };
 }
 
-test("buildRequest asks two Scores and one Choice per message", () => {
+test("buildRequest asks the full battery per message in one forward pass", () => {
   const judge = makeJudge();
   const batch = [msg("a", "hi"), msg("b", "your audio is dead!")];
   const { state, questions } = judge.buildRequest(batch);
@@ -29,15 +29,22 @@ test("buildRequest asks two Scores and one Choice per message", () => {
   assert.equal(state.stream_context, "Playing chess.");
   assert.deepEqual(
     Object.keys(questions).sort(),
-    ["m0_factual", "m0_kind", "m0_relevance", "m1_factual", "m1_kind", "m1_relevance"]
+    [
+      "m0_kind", "m0_manip", "m0_outcome", "m0_relevance", "m0_technique",
+      "m1_kind", "m1_manip", "m1_outcome", "m1_relevance", "m1_technique",
+    ]
   );
-  // Score criteria are the ordered rubrics, Choice criteria the kinds
+  // Score criteria are the ordered rubrics, Choice criteria the label maps
   assert.equal(questions.m0_relevance.criteria.length, RELEVANCE_LEVELS.length);
-  assert.equal(questions.m0_factual.criteria.length, FACTUAL_LEVELS.length);
+  assert.equal(questions.m0_manip.criteria.length, MANIPULATION_LEVELS.length);
+  assert.deepEqual(Object.keys(questions.m0_technique.criteria), Object.keys(TECHNIQUE_CRITERIA));
   assert.deepEqual(Object.keys(questions.m1_kind.criteria), Object.keys(KIND_CRITERIA));
+  assert.equal(questions.m0_outcome.type, "noul");
   // instructions reference the right state path
   assert.match(questions.m1_relevance.instructions, /`messages\[1\]`/);
-  assert.match(questions.m1_factual.instructions, /`messages\[1\]`/);
+  assert.match(questions.m1_manip.instructions, /`messages\[1\]`/);
+  assert.match(questions.m1_outcome.instructions, /`messages\[1\]`/);
+  assert.match(questions.m1_technique.instructions, /`messages\[1\]`/);
   // no mic transcript → no streamer_speech in state or instructions
   assert.ok(!("streamer_speech" in state));
   assert.doesNotMatch(questions.m0_relevance.instructions, /streamer_speech/);
@@ -48,8 +55,19 @@ test("buildRequest carries recent streamer speech as relevancy context", () => {
   const { state, questions } = judge.buildRequest([msg("a", "you got this!")]);
   assert.equal(state.streamer_speech, "okay chat I'm going for the no-hit boss run now");
   assert.match(questions.m0_relevance.instructions, /`streamer_speech`/);
-  // factual rubric judges the message alone — speech context stays out of it
-  assert.doesNotMatch(questions.m0_factual.instructions, /streamer_speech/);
+  // the manipulation rubric judges the message alone — speech context stays out
+  assert.doesNotMatch(questions.m0_manip.instructions, /streamer_speech/);
+});
+
+test("safety sums the manipulation rubric (double weight) with the outcome probe", () => {
+  // straight talk, no steering: fully safe
+  assert.equal(safetyFromAnswers({ score: 0 }, { noul: 0 }), 100);
+  // maximum manipulation, certain steering: fully unsafe
+  assert.equal(safetyFromAnswers({ score: 3 }, { noul: 1 }), 0);
+  // pure call-to-action with zero manipulation stays mostly safe
+  assert.equal(safetyFromAnswers({ score: 0 }, { noul: 1 }), 67);
+  // persuasion techniques (rung 2) with likely steering
+  assert.equal(safetyFromAnswers({ score: 2 }, { noul: 0.8 }), 100 - Math.round(((2 / 3) * 2 + 0.8) / 3 * 100));
 });
 
 test("judgeBatch maps answers back to message ids and normalizes score", async () => {
@@ -57,29 +75,39 @@ test("judgeBatch maps answers back to message ids and normalizes score", async (
   const judge = makeJudge({ onJudged: (id, j) => (judged[id] = j) });
   judge.client = {
     systemOne: async ({ questions }) => {
-      assert.equal(Object.keys(questions).length, 6);
+      assert.equal(Object.keys(questions).length, 10);
       return {
         model: "jev-1.13.0",
         answers: {
           m0_relevance: { type: "score", score: 0.3, confidence: 0.9 },
-          m0_factual: { type: "score", score: 0.15, confidence: 0.85 },
+          m0_manip: { type: "score", score: 0.15, confidence: 0.85 },
+          m0_outcome: { type: "noul", noul: 0.1 },
+          m0_technique: { type: "choice", choice: "none", confidence: 0.9 },
           m0_kind: { type: "choice", choice: "chatter", confidence: 0.8 },
           m1_relevance: { type: "score", score: 3, confidence: 0.95 },
-          m1_factual: { type: "score", score: 2.7, confidence: 0.9 },
-          m1_kind: { type: "choice", choice: "stream_issue", confidence: 0.97 },
+          m1_manip: { type: "score", score: 2.7, confidence: 0.9 },
+          m1_outcome: { type: "noul", noul: 0.9 },
+          m1_technique: { type: "choice", choice: "coercion", confidence: 0.84 },
+          m1_kind: { type: "choice", choice: "toxic", confidence: 0.97 },
         },
         usage: { input_tokens: 500, output_tokens: 8 },
       };
     },
   };
-  await judge.judgeBatch([msg("a", "lol"), msg("b", "NO AUDIO")]);
+  await judge.judgeBatch([msg("a", "lol"), msg("b", "unban him or this chat is done with you")]);
 
   assert.equal(judged.a.relevancy, 10); // 0.3/3 * 100
-  assert.equal(judged.a.factuality, 5); // 0.15/3 * 100
+  assert.equal(judged.a.safety, 100 - Math.round(((0.15 / 3) * 2 + 0.1) / 3 * 100));
+  assert.equal(judged.a.safetyConfidence, 0.85);
+  assert.equal(judged.a.manipulation, 5); // 0.15/3 * 100
+  assert.equal(judged.a.technique, "none");
   assert.equal(judged.a.kind, "chatter");
   assert.equal(judged.b.relevancy, 100); // 3/3 * 100
-  assert.equal(judged.b.factuality, 90); // 2.7/3 * 100
-  assert.equal(judged.b.kind, "stream_issue");
+  assert.equal(judged.b.safety, 100 - Math.round(((2.7 / 3) * 2 + 0.9) / 3 * 100));
+  assert.equal(judged.b.technique, "coercion");
+  assert.equal(judged.b.techniqueConfidence, 0.84);
+  assert.equal(judged.b.outcome, 0.9);
+  assert.equal(judged.b.kind, "toxic");
   assert.equal(judge.stats.inputTokens, 500);
   assert.ok(judge.stats.costUsd > 0);
 });
@@ -114,11 +142,13 @@ test("preview judges a draft without it entering context or the judged count", a
       assert.equal(state.recent_chat.length, 1);
       assert.equal(state.messages.length, 1);
       assert.equal(state.messages[0].text, "is the audio desynced?");
-      assert.equal(Object.keys(questions).length, 3);
+      assert.equal(Object.keys(questions).length, 5);
       return {
         answers: {
           m0_relevance: { type: "score", score: 3, confidence: 0.95 },
-          m0_factual: { type: "score", score: 0.3, confidence: 0.8 },
+          m0_manip: { type: "score", score: 0.3, confidence: 0.8 },
+          m0_outcome: { type: "noul", noul: 0.2 },
+          m0_technique: { type: "choice", choice: "none", confidence: 0.92 },
           m0_kind: { type: "choice", choice: "stream_issue", confidence: 0.9 },
         },
         usage: { input_tokens: 400, output_tokens: 4 },
@@ -127,7 +157,7 @@ test("preview judges a draft without it entering context or the judged count", a
   };
   const j = await judge.preview(msg("draft", "is the audio desynced?"));
   assert.equal(j.relevancy, 100);
-  assert.equal(j.factuality, 10);
+  assert.equal(j.safety, 100 - Math.round(((0.3 / 3) * 2 + 0.2) / 3 * 100));
   assert.equal(j.kind, "stream_issue");
   assert.equal(j.kindConfidence, 0.9);
   // The draft is not chat: context window untouched, judged count unchanged.

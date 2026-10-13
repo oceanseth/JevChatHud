@@ -173,7 +173,7 @@ button.active { color: var(--accent); border-color: var(--accent); }
 .metric-label.inactive { opacity: 0.45; }
 body.jev-off #controls, body.jev-off #tagbar, body.jev-off .peek { display: none; }
 
-/* Slider peeks ("judged against context" / "what the factual slider does"):
+/* Slider peeks ("judged against context" / "what the safety slider does"):
    slide open between the sliders and the tag bar when their label is clicked. */
 .metric-label .metric-name { cursor: pointer; text-decoration: underline dotted rgba(124, 92, 255, 0.6); text-underline-offset: 3px; }
 .metric-label .metric-name:hover { color: var(--text); }
@@ -214,7 +214,7 @@ body.jev-off #controls, body.jev-off #tagbar, body.jev-off .peek { display: none
   padding: 0 2px;
 }
 .peek-close:hover { color: var(--text); }
-#factual-peek .ctx-text em { font-style: normal; color: var(--text); }
+#safety-peek .ctx-text em { font-style: normal; color: var(--text); }
 .ctx-row { display: flex; gap: 8px; font-size: 12px; margin: 2px 0; align-items: baseline; }
 .ctx-label { flex-shrink: 0; color: var(--accent); font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
 .ctx-text { color: var(--text-dim); word-break: break-word; }
@@ -446,6 +446,9 @@ body.show-timestamps .msg .time { display: inline; }
 .chip.kind-chatter { color: #9a9ab0; border-color: var(--border); }
 .chip.kind-toxic { color: #ff8f5c; border-color: #5a2a2a; opacity: 0.7; }
 
+/* Safety lens flag: the named fallacy / manipulation technique family. */
+.chip.technique { color: #ff9e9e; border-color: #7e3a4a; }
+
 #statusbar {
   display: flex;
   gap: 10px;
@@ -546,7 +549,7 @@ body.show-timestamps .msg .time { display: inline; }
 }
 #chat-send:hover { border-color: #bf94ff; }
 #chat-send:disabled { opacity: 0.6; }
-/* Pre-send verdict under the composer: the draft's kind tag + r/f score chips,
+/* Pre-send verdict under the composer: the draft's kind tag + r/s score chips,
    reusing the feed's chip styling, plus a one-line note on feed visibility. */
 #chat-preview {
   display: flex;

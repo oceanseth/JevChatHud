@@ -202,19 +202,22 @@ async function channelCategory(token, login, { fetchImpl = fetch } = {}) {
   }
 }
 
-/** Send one chat line as the logged-in user. Throws with Twitch's reason. */
-async function sendChatMessage({ token, broadcasterId, senderId, message, fetchImpl = fetch }) {
+/** Send one chat line as the logged-in user. Throws with Twitch's reason.
+ * `replyParentMessageId` threads the line as a reply to that chat message. */
+async function sendChatMessage({ token, broadcasterId, senderId, message, replyParentMessageId, fetchImpl = fetch }) {
   const text = String(message || "").trim();
   if (!text) throw new Error("Say something first");
   if (text.length > 500) throw new Error("Twitch messages are limited to 500 characters");
+  const body = {
+    broadcaster_id: broadcasterId,
+    sender_id: senderId,
+    message: text,
+  };
+  if (replyParentMessageId) body.reply_parent_message_id = replyParentMessageId;
   const res = await fetchImpl(`${HELIX}/chat/messages`, {
     method: "POST",
     headers: { ...helixHeaders(token), "content-type": "application/json" },
-    body: JSON.stringify({
-      broadcaster_id: broadcasterId,
-      sender_id: senderId,
-      message: text,
-    }),
+    body: JSON.stringify(body),
   });
   const data = await readJson(res);
   const auth = rejectedTwitchAuth(res, data);

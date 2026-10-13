@@ -34,27 +34,42 @@ session: 45 messages judged for $0.0013.*
   the original text.
 - Messages are batched (~1s) into a single TypeSafe request using the
   [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) pattern:
-  per message two Scores (four attention levels → relevancy 0–100, and four
-  factuality levels → factual 0–100) and one Choice
+  per message one forward pass carries a relevancy Score (four attention
+  levels → 0–100), a **safety battery** (a four-rung manipulation Score, an
+  "is it steering toward an outcome?" Noul, and a fallacy/technique-family
+  Choice, summed into safety 0–100), and a kind Choice
   (question / stream issue / feedback / personal / hype / chatter / toxic).
 - **Two sliders, one verdict.** The **relevancy** slider (0–100) curates on
-  attention-worthiness; the **factual** slider curates on Jev's factuality
-  score — does the message *assert something verifiable* (a checkable claim
-  about the game, the stream, the world) rather than express an opinion,
-  reaction, or hype? The factual rubric follows the fact-vs-opinion literature
-  ([ClaimBuster](https://arxiv.org/abs/2004.14425)'s non-factual / unimportant
-  factual / check-worthy taxonomy): pure opinion → unverifiable speculation →
-  personal-experience fact → publicly verifiable claim. It scores
-  *checkability, not truth*. The thresholds **AND** together and a slider at 0
-  is no constraint — so relevancy-only, factual-only ("facts only"), and
-  "on-topic AND verifiable" are all just positions of the two sliders. Both
-  dimensions are judged per message in the same request
+  attention-worthiness; the **safety** slider curates on Jev's manipulation
+  lens — how is the message *trying to work on you*? The rubric is built on
+  the persuasion/manipulation research: the
+  [SemEval-2023 Task 3](https://aclanthology.org/2023.semeval-1.317/)
+  persuasion-technique families, [MAFALDA](https://arxiv.org/abs/2311.09761)'s
+  unified fallacy taxonomy, and [MentalManip](https://aclanthology.org/2024.acl-long.206/)
+  for coercion in dialogue: straight talk → rhetorical slant → persuasion
+  techniques at work → coercive/manipulative, blended with the probability
+  that the message is pushing the streamer or audience toward an outcome.
+  Confidently-detected technique families (loaded language, reputation attack,
+  false logic, distraction, smuggled assumption, vagueness, coercion,
+  call-to-action) appear as a red chip on the message — presented as a flag,
+  never a verdict, because fine-grained fallacy naming is where detectors
+  (humans included) stop agreeing. The thresholds **AND** together and a
+  slider at 0 is no constraint — so relevancy-only, safety-only, and
+  "on-topic AND not working on you" are all just positions of the two sliders.
+  Both dimensions are judged per message in the same request
   ([composite scoring](https://docs.typesafe.ai/patterns/composite-scoring)),
   so sliding either one re-curates every already-judged message instantly —
   thresholds live in code/UI, not the model; no re-inference, no extra cost.
   While both sliders are active, each message's score chip shows the *binding*
   dimension — the score with the least headroom above its slider, prefixed
-  `r`/`f` — and the tooltip always carries both.
+  `r`/`s` — and the tooltip always carries both plus what the message was
+  flagged for.
+- **Judgement replies in chat** (Settings → Twitch, off by default): when the
+  safety slider blocks a message, Jev replies to it in the channel — threaded,
+  sent as your logged-in Twitch account — naming the detected fallacy or
+  manipulation technique and the safety score, closing with "an AI lens, not
+  a verdict". Rate-limited per chatter and globally so a raid of bait can't
+  make Jev the loudest voice in chat.
 - **The Jev Judge toggle.** The robed coin in the center of the header is the
   master switch. Eyes open and in color: Jev is filtering your chat ("*Jev,
   now filtering your chat*"). Click him and he closes his eyes, drops to
@@ -95,10 +110,9 @@ tag bar, with the mic toggle at his side.*
 </p>
 
 *Left: both sliders active on a live [twitch.tv/jynxzi](https://twitch.tv/jynxzi)
-chat — 97 messages judged, four survived relevancy ≥30 AND factual ≥55, chips
-showing the binding dimension (`f70` on "I gifted 10!!!!", a verifiable claim;
-`r67` on a FOV critique). Right: the Judge's eyes are closed — greyscale coin,
-no filter rows, the raw firehose of `f0` emote spam flowing straight through.*
+chat (screenshot from the earlier factual-slider build — the second slider is
+the safety lens now, same mechanics). Right: the Judge's eyes are closed —
+greyscale coin, no filter rows, the raw firehose flowing straight through.*
 
 ## Judging against your voice
 
@@ -120,8 +134,8 @@ stream, and the ~10s broadcast delay chat reacts behind is absorbed by the
 - **See what Jev sees.** Click the **relevancy** label and a strip slides
   open under the sliders — *judged against context:* your profile's stream
   context plus the rolling last-60s transcript, updating live as you speak.
-  Click the **factual** label for the matching explainer — what the
-  fact-vs-opinion score measures and the four rungs of its 0–100 ladder.
+  Click the **safety** label for the matching explainer — what the
+  manipulation lens measures and the four rungs of its 0–100 ladder.
   One strip at a time; the ▴ arrow tucks either away.
 - **Guided install, per OS.** The mic needs a local `whisper-cli` binary and
   a ggml model; if either is missing, clicking the mic opens **Settings →
